@@ -1,0 +1,4 @@
+# paths
+repo_root: "."
+data_path: ../data
+yt_metadata_file: ../data/yt_metadata.parquet
