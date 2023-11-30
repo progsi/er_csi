@@ -3,6 +3,22 @@ import argparse
 import os
 
 
+def to_interim(output_dir):
+    
+    interim_path = output_dir.replace("raw", "interim")
+    os.makedirs(interim_path, exist_ok=True)
+
+    def split_to_interim(split):
+        interim = pd.DataFrame(pd.read_csv(f"{output_dir}/{split}.csv").apply(
+            lambda x: "left_" + x.yt_id_a + "#right_" + x.yt_id_b, axis=1), columns=["pair_id"])
+
+        interim.to_csv(f"{interim_path}/shs100k2_yt-{split}.csv", index=None)
+        
+    split_to_interim("train")
+    split_to_interim("test")
+    split_to_interim("val")
+    
+    
 def main(input_file: str, output_dir: str):
     
     def gen_pairs(data, n=10_000, frac_pos=0.15):
@@ -59,6 +75,8 @@ def main(input_file: str, output_dir: str):
         n=1_000
         )
     val_pairs.to_csv(os.path.join(output_dir, "valid.csv"))
+    
+    to_interim(output_dir)
 
 
 if __name__ == "__main__":
