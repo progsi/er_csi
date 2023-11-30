@@ -13,10 +13,13 @@ def to_interim(output_dir):
             lambda x: "left_" + x.yt_id_a + "#right_" + x.yt_id_b, axis=1), columns=["pair_id"])
 
         interim.to_csv(f"{interim_path}/shs100k2_yt-{split}.csv", index=None)
-        
+    
+    print("Generating interem train...")
     split_to_interim("train")
+    print("Generating interem test...")
     split_to_interim("test")
-    split_to_interim("val")
+    print("Generating interem valid...")
+    split_to_interim("valid")
     
     
 def main(input_file: str, output_dir: str):
