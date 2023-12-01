@@ -3,30 +3,57 @@ import argparse
 import os
 
 
-def to_interim(output_dir):
+def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs):
     
+    def gen_pair_id(x):
+        return "left_" + x.ltable_id + "#right_" + x.rtable_id
+        
     interim_path = output_dir.replace("raw", "interim")
     os.makedirs(interim_path, exist_ok=True)
 
-    def split_to_interim(split, json=True):
-        interim = pd.DataFrame(pd.read_csv(f"{output_dir}/{split}.csv").apply(
-            lambda x: "left_" + x.ltable_id + "#right_" + x.rtable_id, axis=1), columns=["pair_id"])
-
-        if json:
-            split_name = "gs" if split == "test" else split 
-            interim.to_json(f"{interim_path}/shs100k2_yt-{split_name}.json.gz", compression='gzip', lines=True, orient='records')
-        else:
-            interim.to_csv(f"{interim_path}/shs100k2_yt-{split}.csv", index=False, header=True)
+    def to_interim_csv():
+        
+        interim = pd.DataFrame(
+            pd.read_csv(f"{output_dir}/valid.csv").apply(gen_pair_id, axis=1), columns=["pair_id"])
+        interim.to_csv(f"{interim_path}/shs100k2_yt-valid.csv", index=False, header=True)
     
-    # interim subdir
-    print("Generating interem train...")
-    split_to_interim("train",  json=True)
-    print("Generating interem test...")
-    split_to_interim("test", json=True)
-    print("Generating interem valid...")
-    split_to_interim("valid", json=False)
-    
+    def to_interim_json():
+        
+        def hell_of_a_join(pairs):
+            
+            dataset = pd.merge(
+                    pd.merge(
+                    data_raw[["set_id", "yt_id", "video_title", "description", "channel_name"]].rename(
+                        {"set_id": "cluster_id", "yt_id": "id"}, axis=1), 
+                    pairs, 
+                    how="right", 
+                    left_on=["cluster_id", "id"], 
+                    right_on=["set_id_a", "ltable_id"]),
+                    data_raw[["set_id", "yt_id", "video_title", "description", "channel_name"]].rename(
+                        {"set_id": "cluster_id", "yt_id": "id"}, axis=1),
+                    how="left",
+                    left_on=["set_id_b", "rtable_id"],
+                    right_on=["cluster_id", "id"],
+                    suffixes=["_left", "_right"]
+        )
+            dataset["pair_id"] = dataset.apply(gen_pair_id, axis=1)
+            return dataset
+        
+        print("Generating interim train...")
+        interim_train = hell_of_a_join(train_pairs)
+        interim_train.to_json(f"{interim_path}/shs100k2_yt-train.json.gz", lines=True, 
+                              compression='gzip', orient='records')
 
+        print("Generating interim test...")
+        interim_test = hell_of_a_join(test_pairs)
+        interim_test.to_json(f"{interim_path}/shs100k2_yt-gs.json.gz", lines=True, 
+                             compression='gzip', orient='records')
+
+    to_interim_json()
+    
+    print("Generating interim valid...")
+    to_interim_csv()
+        
     
 def main(input_file: str, output_dir: str):
     
@@ -86,7 +113,7 @@ def main(input_file: str, output_dir: str):
     val_pairs.to_csv(os.path.join(output_dir, "valid.csv"), index=False)
     
     # to interim subdir
-    to_interim(output_dir)
+    to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs)
     
     # to filter metadata file
     relevant_yt_ids = train_pairs.ltable_id.to_list() + train_pairs.rtable_id.to_list() + \
@@ -97,16 +124,16 @@ def main(input_file: str, output_dir: str):
     processed_output_dir = output_dir.replace('raw', 'processed') + 'contrastive/'
     os.makedirs(processed_output_dir, exist_ok=True)
     # write to processed
-    data_raw.query(f"yt_id.isin({relevant_yt_ids})").rename(
+    data_raw.loc[data_raw.yt_id.isin(relevant_yt_ids)].rename(
         {"yt_id": "id", "set_id": "cluster_id"}, axis=1).to_pickle(
             processed_output_dir + f'{handle}-train.pkl.gz', compression='gzip')
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_file", type=str, default="../../../data/shs100k2_yt.parquet",
+    parser.add_argument("--input_file", type=str, default="~/data/shs100k2_yt.parquet",
                         help="path to parquet source file")
-    parser.add_argument("--output_dir", type=str, default="../../../contrastive-product-matching/data/raw/shs100k2_yt/",
+    parser.add_argument("--output_dir", type=str, default="~/contrastive-product-matching/data/raw/shs100k2_yt/",
                         help="path to parquet source file")
     args = parser.parse_args()
     main(args.input_file, args.output_dir)
