@@ -8,19 +8,25 @@ def to_interim(output_dir):
     interim_path = output_dir.replace("raw", "interim")
     os.makedirs(interim_path, exist_ok=True)
 
-    def split_to_interim(split):
+    def split_to_interim(split, json=True):
         interim = pd.DataFrame(pd.read_csv(f"{output_dir}/{split}.csv").apply(
-            lambda x: "left_" + x.yt_id_a + "#right_" + x.yt_id_b, axis=1), columns=["pair_id"])
+            lambda x: "left_" + x.ltable_id + "#right_" + x.rtable_id, axis=1), columns=["pair_id"])
 
-        interim.to_csv(f"{interim_path}/shs100k2_yt-{split}.csv", index=None)
+        if json:
+            split_name = "gs" if split == "test" else split 
+            interim.to_json(f"{interim_path}/shs100k2_yt-{split_name}.json.gz", compression='gzip', lines=True, orient='records')
+        else:
+            interim.to_csv(f"{interim_path}/shs100k2_yt-{split}.csv", index=False, header=True)
     
+    # interim subdir
     print("Generating interem train...")
-    split_to_interim("train")
+    split_to_interim("train",  json=True)
     print("Generating interem test...")
-    split_to_interim("test")
+    split_to_interim("test", json=True)
     print("Generating interem valid...")
-    split_to_interim("valid")
+    split_to_interim("valid", json=False)
     
+
     
 def main(input_file: str, output_dir: str):
     
@@ -43,7 +49,7 @@ def main(input_file: str, output_dir: str):
             [pos_pairs, neg_pairs], 
             ignore_index=True).sample(frac=1) #.drop(["set_id_a", "set_id_b"])
         
-        return dataset
+        return dataset.rename({"yt_id_a": "ltable_id", "yt_id_b": "rtable_id"}, axis=1)
 
     os.makedirs(output_dir, exist_ok=True)
     
@@ -61,7 +67,7 @@ def main(input_file: str, output_dir: str):
         data_raw.query("split == 'TRAIN'"), 
         n=10_000
         )
-    train_pairs.to_csv(os.path.join(output_dir, "train.csv"))
+    train_pairs.to_csv(os.path.join(output_dir, "train.csv"), index=False)
     
     # write test pairs
     print("Generating Test Pairs...")
@@ -69,7 +75,7 @@ def main(input_file: str, output_dir: str):
         data_raw.query("split == 'TEST'"), 
         n=1_000
         )
-    test_pairs.to_csv(os.path.join(output_dir, "test.csv"))
+    test_pairs.to_csv(os.path.join(output_dir, "test.csv"), index=False)
     
     # write val pairs
     print("Generating Validation Pairs...")
@@ -77,10 +83,24 @@ def main(input_file: str, output_dir: str):
         data_raw.query("split == 'VAL'"), 
         n=1_000
         )
-    val_pairs.to_csv(os.path.join(output_dir, "valid.csv"))
+    val_pairs.to_csv(os.path.join(output_dir, "valid.csv"), index=False)
     
+    # to interim subdir
     to_interim(output_dir)
-
+    
+    # to filter metadata file
+    relevant_yt_ids = train_pairs.ltable_id.to_list() + train_pairs.rtable_id.to_list() + \
+        test_pairs.ltable_id.to_list() + test_pairs.rtable_id.to_list() + val_pairs.ltable_id.to_list() + \
+            val_pairs.rtable_id.to_list()
+    # build path
+    handle = output_dir.split('/')[-2]
+    processed_output_dir = output_dir.replace('raw', 'processed') + 'contrastive/'
+    os.makedirs(processed_output_dir, exist_ok=True)
+    # write to processed
+    data_raw.query(f"yt_id.isin({relevant_yt_ids})").rename(
+        {"yt_id": "id", "set_id": "cluster_id"}, axis=1).to_pickle(
+            processed_output_dir + f'{handle}-train.pkl.gz', compression='gzip')
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
