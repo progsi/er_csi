@@ -40,7 +40,9 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs):
             return dataset
         
         print("Generating interim train...")
-        interim_train = hell_of_a_join(train_pairs)
+        interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
+            pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True)
+            )
         interim_train.to_json(f"{interim_path}/shs100k2_yt-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
 
