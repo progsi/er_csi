@@ -9,7 +9,7 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs):
         return "left_" + x.ltable_id + "#right_" + x.rtable_id
         
     interim_path = output_dir.replace("raw", "interim")
-    os.makedirs(interim_path, exist_ok=True)
+    # os.makedirs(interim_path, exist_ok=True)
 
     def to_interim_csv():
         
