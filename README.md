@@ -18,3 +18,7 @@ General requirements: a file in `../data/shs100k2_yt.parquet` containing the ori
 1. If not done yet, do preprocessing steps + training for rSupCon.
 2. Activate env: `conda activate py_entitymatching`
 3. Go to  `magellan` and execute the notebook `select_best_matcher.ipynb` step by step.
+
+### HierGAT
+
+### Ditto
