@@ -10,6 +10,7 @@ class Config(object):
         self.epochs = epochs
         self.batch_size = batch_size
         self.model_hps = None
+        self.model_name = model_name
         
         with open(config_file, "r") as f:
             config_data = yaml.safe_load(f)

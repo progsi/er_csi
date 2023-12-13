@@ -3,71 +3,81 @@ import time
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
+from src.baselines.rsupcon.model import ContrastiveClassifierModel
 from src.dataset import TestDataset
-from src.utils import Config
 from src.evaluation import RetrievalEvaluation
 import json
 
 
-def test(model: torch.nn.Module, test_loader: torch.utils.data.DataLoader, 
-         target_matrix: torch.tensor):
+def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matrix,
+         device: str):
 
     model.eval()
+    
+    test_loader = DataLoader(dataset, batch_size=16, collate_fn=dataset.collate_fn)
+    target_matrix = target_matrix.to(device)
     
     start_time = time.monotonic()
 
     # A tensor to store all embeddings
-    device = 'cuda'
     emb_all = torch.tensor([], device=device)
+    emb_all2 = torch.tensor([], device=device)
+
 
     with torch.no_grad():
         
         for i, batch in tqdm(enumerate(test_loader), desc="Computing embeddings: "):
-
-            # get feature
-            feats = batch["feat"].to(device)
             
+            embs = model.encode(batch["yt_title"], convert_to_tensor=True)
+            embs_target = model.encode(batch["shs_title"], convert_to_tensor=True)
             # compute and collect embeddings
-            embs, __ = model.inference(feats)
             emb_all = torch.cat((emb_all, embs))
+            emb_all2 = torch.cat((emb_all2, embs_target))
 
         test_time = time.monotonic() - start_time
         
         # compute metrics
         ir_eval = RetrievalEvaluation(top_k=10, device=device)
+        print("Evaluation YouTube -- YouTube")
         metrics_dict = ir_eval.eval(emb_all, target_matrix)
+        print("Evaluation SHS -- YouTube")
+        metrics_dict2 = ir_eval.eval(emb_all, target_matrix, emb_all2=emb_all2)
 
     model.train()
     
     print(json.dumps(metrics_dict, indent=4))
     print('Total time: {:.0f}m{:.0f}s.'.format(test_time // 60, test_time % 60))
-    return metrics_dict
+    return metrics_dict, metrics_dict2
 
 
-def main(config_file: str, model_name: str, dataset_name: str):
+def main(model_name: str, dataset_name: str):
     
-    config = Config(model_name, config_file=config_file)
-
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    tokenizer = 'roberta-base'
+    
+    dataset = TestDataset(
+        dataset_name,
+        '../data/',
+        '../data/yt_metadata.parquet',
+        tokenizer=tokenizer
+    )
+    
     if model_name == 'rsupcon':
-        pass
+        model = ContrastiveClassifierModel(
+            model=tokenizer,
+            len_tokenizer=len(dataset.tokenizer),
+            checkpoint_path="../contrastive-product-matching/reports/finetune/shs100k2_yt-all-256-5e-05-0.07-roberta-base/2/pytorch_model.bin",
+            frozen=True,
+            pos_neg=False)
     elif model_name == 'magellan':
         pass
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
         
-    model.load_weights()
-    model.to(config.device)
-    
-    dataset = TestDataset(
-        dataset_name,
-        config.data_path,
-        config.yt_metadata_file
-    )
+    model.to(device)
 
-    test_loader = DataLoader(dataset, batch_size=16, collate_fn=dataset.collate_fn)
-    
-    test(model, test_loader, dataset.get_target_matrix().to(config.device))
+    test(model, model_name, dataset, device)
     
         
 if __name__ == "__main__":
@@ -82,7 +92,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args.config_file, args.model_name, args.dataset_name)    
+    main(args.model_name, args.dataset_name)    
     
         
         

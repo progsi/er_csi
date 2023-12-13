@@ -2,3 +2,7 @@
 repo_root: "."
 data_path: ../data
 yt_metadata_file: ../data/yt_metadata.parquet
+device: cuda
+triplet_weight: 1.0
+learning_rate: 0.001
+
