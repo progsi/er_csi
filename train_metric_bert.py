@@ -34,7 +34,6 @@ class SBert(nn.Module):
         self.pooling = self.__max_pooling if pooling == 'max' else self.__mean_pooling
         
     def forward(self, sentences):
-        
         encoded_input = self.tokenizer(sentences, padding=True, truncation=True, max_length=128, return_tensors='pt')
         model_output = self.model(**encoded_input.to(self.device))
         pooled_output = self.pooling(model_output, encoded_input['attention_mask'])
@@ -197,7 +196,7 @@ if __name__ == "__main__":
                         choices=["hard", "semihard"], 
                         help="Triplet Mining Strategy")
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=256, help="Training Dataset name")
+    parser.add_argument("--batch_size", type=int, default=64, help="Training Dataset name")
     parser.add_argument("--val_every", type=int, default=100, help="how often to perform validation")
     parser.add_argument("--tagset_transfer", action="store_true", 
                         help="Whether to batch-sample by classes using pytorch-metric-learning.")

@@ -10,7 +10,7 @@ class RetrievalEvaluation(object):
         object (_type_): _description_
     """
     def __init__(self, top_k = 10, empty_target_action = 'skip', 
-                 fill_diagonal_value: int = 0, device: str = 'cuda:0') -> None:
+                 fill_diagonal_value: int = 0, device: str = 'cuda') -> None:
         
         self.top_k = top_k
         self.empty_target_action = empty_target_action # what to do with 0 relevance queries
