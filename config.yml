@@ -1,8 +1,28 @@
 # paths
 repo_root: "."
-data_path: ../data
-yt_metadata_file: ../data/yt_metadata.parquet
+data_path: /data/csi_datasets/
+yt_metadata_file: /data/yt_metadata.parquet
 device: cuda
-triplet_weight: 1.0
+
+# losses
+arcface_loss:
+  num_classes: 10_000
+  embedding_size: 768
+  scale: 28.6
+  margin: 0.5
+contrastive_loss:
+  pos_margin: 0
+  neg_margin: 1
+multisimilarity_loss:
+  alpha: 2
+  beta: 50
+  base: 0.5
+ntxent_loss:
+  temperature: 0.7
+triplet_loss:
+  margin: 0.05
+
+
 learning_rate: 0.001
+batch_size: 256
 

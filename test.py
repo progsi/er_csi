@@ -10,7 +10,7 @@ import json
 
 
 def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matrix,
-         device: str):
+         device: str, print_all=False):
 
     model.eval()
     
@@ -43,10 +43,14 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matri
         print("Evaluation SHS -- YouTube")
         metrics_dict2 = ir_eval.eval(emb_all, target_matrix, emb_all2=emb_all2)
 
-    model.train()
     
-    print(json.dumps(metrics_dict, indent=4))
     print('Total time: {:.0f}m{:.0f}s.'.format(test_time // 60, test_time % 60))
+
+    if print_all:
+        print(json.dumps(metrics_dict, indent=4))
+        
+    model.train()
+
     return metrics_dict, metrics_dict2
 
 

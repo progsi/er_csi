@@ -16,12 +16,19 @@ from src.utils import Config
 from src.evaluation import RetrievalEvaluation
 from test import test
 import json
-from pytorch_metric_learning import miners, losses, distances, samplers
+from pytorch_metric_learning import miners, losses, distances, samplers, regularizers
 import wandb
 
 
 MODELS = ["sentence-transformers/distiluse-base-multilingual-cased-v2", 
           "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"]
+LOSSES = {
+    'contrastive_loss': losses.ContrastiveLoss,
+    'triplet_loss': losses.TripletMarginLoss,
+    'ntxent_loss': losses.NTXentLoss,
+    'multisimilarity_loss': losses.MultiSimilarityLoss,
+    'arcface_loss': losses.ArcFaceLoss,
+}
 
 
 class SBert(nn.Module):
@@ -54,9 +61,8 @@ class SBert(nn.Module):
       
 
 def train(config_file: str, model_name: str, train_dataset_name: str, 
-          val_dataset_name: str, mining_strategy: str, epochs: int, 
-          batch_size: int, val_every: int, tagset_transfer: bool, 
-          m_per_class: int, sbert: bool):
+          val_dataset_name: str, loss_name: str, attr_pairs: str, mining_strategy: str, epochs: int, 
+          batch_size: int, val_every: int, m_per_class: int, sbert: bool):
     
     torch.autograd.set_detect_anomaly(True)
     
@@ -104,10 +110,15 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
         miner = miners.BatchEasyHardMiner(neg_strategy="semihard")
     
     # Losses
-    triplet_loss = losses.TripletMarginLoss()
-    triplet_weight = config.triplet_weight
+    # https://github.com/KevinMusgrave/pytorch-metric-learning/issues/512
+    # advice: " I would use ContrastiveLoss, MultiSimilarityLoss, or NTXentLoss (also known as InfoNCE) because they tend to perform better than TripletMarginLoss."
+    
 
-    optimizer = AdamW(params=model.parameters(), lr=config.learning_rate)
+    loss_func = LOSSES[loss_name](**config.__getattribute__(loss_name))
+
+    params = list(model.parameters()) + list(loss_func.parameters()) if loss_name == "arcface_loss" else model.parameters()
+    
+    optimizer = AdamW(params=params, lr=config.learning_rate)
     
     # scheduler = ExponentialLR(optimizer, gamma=0.95)
     # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
@@ -134,17 +145,24 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 
             optimizer.zero_grad()
             
-            # metric learning
             embs = model(batch["yt_title"])
-            embs_target = model(batch["shs_title"])
-            
-            hard_triplets = miner(embeddings=embs, labels=labels, 
-                                  ref_emb=embs_target, ref_labels=labels)
-            
-            loss_triplet = triplet_loss(embs, labels, hard_triplets)
 
-            loss = triplet_weight * loss_triplet
+            # metric learning
+            if attr_pairs == "yt-yt":
+                embs_target = embs
+            else:
+                embs_target = model(batch["shs_title"])
             
+            if loss_name == "triplet_loss":
+                hard_triplets = miner(embeddings=embs, labels=labels, 
+                                        ref_emb=embs_target, ref_labels=labels)
+                loss = loss_func(embeddings=embs, labels=labels, 
+                                        ref_emb=embs_target, ref_labels=labels, indices_tuple=hard_triplets)
+            elif loss_name == "arcface_loss":
+                loss = loss_func(embeddings=embs, labels=labels) 
+            else:
+                loss = loss_func(embeddings=embs, labels=labels, 
+                                        ref_emb=embs_target, ref_labels=labels) 
             loss.backward()
             optimizer.step()
             # scheduler.step(loss)
@@ -167,7 +185,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                     torch.save({"model": model.state_dict()}, 
                                os.path.join(checkpoint_path, "best.pt"))  
                 
-            loss_dict = {"loss_triplet": loss_triplet, "loss": loss, 
+            loss_dict = {"loss": loss, 
                        "val_mAP_yt": val_mAP, "best_val_mAP_yt": best_val_mAP, 
                        "val_mAP_shs": val_mAP_shs}
             
@@ -177,10 +195,6 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
               
             
 if __name__ == "__main__":
-    # for debugging:
-    import socket
-    internet_available = lambda: True if socket.create_connection(("8.8.8.8", 53), timeout=3) is not None else False
-    print(f"{datetime.now()} Internet available: {internet_available()} ")
 
     parser = argparse.ArgumentParser(description="Train a CSI model.")
     parser.add_argument("--config_file", type=str, default="config.yml", 
@@ -192,14 +206,15 @@ if __name__ == "__main__":
     parser.add_argument("--val_dataset_name", type=str, default="shs100k2_val", 
                         choices=["shs100k2_val", "shs-yt", "shs100k2_test"], 
                         help="Test Dataset name")
+    parser.add_argument("--attr_pairs", type=str, default="yt-yt",
+                        choices=["yt-yt", "shs-yt"])
     parser.add_argument("--mining_strategy", type=str, default="hard", 
                         choices=["hard", "semihard"], 
                         help="Triplet Mining Strategy")
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=64, help="Training Dataset name")
+    parser.add_argument("--batch_size", type=int, default=128, help="Training Dataset name")
+    parser.add_argument("--loss", type=str, choices=LOSSES.keys(), default="arcface_loss", help="loss function")
     parser.add_argument("--val_every", type=int, default=100, help="how often to perform validation")
-    parser.add_argument("--tagset_transfer", action="store_true", 
-                        help="Whether to batch-sample by classes using pytorch-metric-learning.")
     parser.add_argument("--m_per_class", type=int, default=4,
                         help="Number of samples per class for each batch.-1 indicates random sampling instead.")
     parser.add_argument("--sbert", action="store_true", 
@@ -208,6 +223,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     train(args.config_file, args.model_name, args.train_dataset_name, 
-          args.val_dataset_name, args.mining_strategy, args.epochs, args.batch_size, args.val_every, 
-          args.tagset_transfer, args.m_per_class, args.sbert)    
+          args.val_dataset_name, args.loss, args.attr_pairs, args.mining_strategy, args.epochs, args.batch_size, args.val_every, 
+          args.m_per_class, args.sbert)    
 
