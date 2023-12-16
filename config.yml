@@ -6,10 +6,10 @@ device: cuda
 
 # losses
 arcface_loss:
-  num_classes: 10_000
-  embedding_size: 768
-  scale: 28.6
-  margin: 0.5
+  num_classes: 5324
+  embedding_size: 384
+  scale: 64
+  margin: 28.6
 contrastive_loss:
   pos_margin: 0
   neg_margin: 1

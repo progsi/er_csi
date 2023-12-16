@@ -20,8 +20,11 @@ from pytorch_metric_learning import miners, losses, distances, samplers, regular
 import wandb
 
 
-MODELS = ["sentence-transformers/distiluse-base-multilingual-cased-v2", 
-          "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"]
+MODELS = [
+    "sentence-transformers/distiluse-base-multilingual-cased-v2", 
+    "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" # dim. 384, 50 languages
+          ]
 LOSSES = {
     'contrastive_loss': losses.ContrastiveLoss,
     'triplet_loss': losses.TripletMarginLoss,
@@ -30,6 +33,9 @@ LOSSES = {
     'arcface_loss': losses.ArcFaceLoss,
 }
 
+# FIXME: Ideas for better performance:
+# - SCALE DOWN ARCFACE SCALE PARAM
+# - hier ganz unten bzgl. Learning Rate: https://github.com/KevinMusgrave/pytorch-metric-learning/issues/534
 
 class SBert(nn.Module):
     def __init__(self, base_name, pooling='max', device='cuda'):
@@ -51,13 +57,12 @@ class SBert(nn.Module):
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
         return torch.max(token_embeddings, 1)[0]
-
+    
     def __mean_pooling(self, model_output, attention_mask):
         token_embeddings = model_output[0] #First element of model_output contains all token embeddings
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-        return sum_embeddings / sum_mask    
+        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+    
       
 
 def train(config_file: str, model_name: str, train_dataset_name: str, 
@@ -73,7 +78,8 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
     os.makedirs(checkpoint_path, exist_ok=True)
     
     if sbert:
-        model = SBert(model_name, pooling='mean')
+        # model = SBert(model_name, pooling='mean') # FIXME this doesnt work
+        model = SentenceTransformer(model_name)
     else:
         pass
 
@@ -145,13 +151,13 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 
             optimizer.zero_grad()
             
-            embs = model(batch["yt_title"])
+            embs = model.encode(batch["yt_title"], convert_to_tensor=True)
 
             # metric learning
             if attr_pairs == "yt-yt":
                 embs_target = embs
             else:
-                embs_target = model(batch["shs_title"])
+                embs_target = model.encode(batch["shs_title"], convert_to_tensor=True)
             
             if loss_name == "triplet_loss":
                 hard_triplets = miner(embeddings=embs, labels=labels, 
@@ -199,7 +205,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a CSI model.")
     parser.add_argument("--config_file", type=str, default="config.yml", 
                         help="Path to the configuration file")
-    parser.add_argument("--model_name", type=str, default=MODELS[0], help="Model name")
+    parser.add_argument("--model_name", type=str, default=MODELS[2], help="Model name")
     parser.add_argument("--train_dataset_name", type=str, default="shs100k2_train", 
                         choices=["shs100k2_train"], 
                         help="Training Dataset name")
