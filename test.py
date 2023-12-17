@@ -27,9 +27,9 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matri
         
         for i, batch in tqdm(enumerate(test_loader), desc="Computing embeddings: "):
             
-            embs = model.encode(batch["yt_title"], convert_to_tensor=True)
-            embs_target = model.encode(batch["shs_title"], convert_to_tensor=True)
-            # compute and collect embeddings
+            embs = model(batch["yt_title"]) 
+            embs_target = model(batch["shs_title"])
+            
             emb_all = torch.cat((emb_all, embs))
             emb_all2 = torch.cat((emb_all2, embs_target))
 

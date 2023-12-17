@@ -78,13 +78,10 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
     os.makedirs(checkpoint_path, exist_ok=True)
     
     if sbert:
-        # model = SBert(model_name, pooling='mean') # FIXME this doesnt work
-        model = SentenceTransformer(model_name)
+        model = SBert(model_name, pooling='mean') # FIXME this doesnt work
+        # model = SentenceTransformer(model_name, device=config.device) # FIXME: I HATE SBERT
     else:
         pass
-
-    model.to(config.device)
-    model.train()
     
     # init training iterator
     dataset_train = OnlineCoverSongDataset(
@@ -126,6 +123,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
     
     optimizer = AdamW(params=params, lr=config.learning_rate)
     
+    
     # scheduler = ExponentialLR(optimizer, gamma=0.95)
     # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10)
 
@@ -144,6 +142,9 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
     val_mAP_shs = None
     step = 0
     
+    model.to(config.device)
+    model.train()
+    
     for epoch in range(epochs):
         for epoch_step, batch in tqdm(enumerate(train_loader), desc=f"Training epoch {epoch}"):
             
@@ -151,13 +152,13 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 
             optimizer.zero_grad()
             
-            embs = model.encode(batch["yt_title"], convert_to_tensor=True)
+            embs = model(batch["yt_title"])
 
             # metric learning
             if attr_pairs == "yt-yt":
                 embs_target = embs
             else:
-                embs_target = model.encode(batch["shs_title"], convert_to_tensor=True)
+                embs_target = model(batch["shs_title"])
             
             if loss_name == "triplet_loss":
                 hard_triplets = miner(embeddings=embs, labels=labels, 
@@ -173,7 +174,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
             optimizer.step()
             # scheduler.step(loss)
             
-            if step != 0 and step % val_every == 0:
+            if step % val_every == 0:
 
                 val_metrics, val_metrics_shs = test(model, dataset_val, dataset_val.get_target_matrix().to(config.device), 
                                                     config.device)
@@ -184,7 +185,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 print(f"Val. mAP (yt-yt) at epoch {epoch} and step {step}: {val_mAP}")
                 print(f"Val. mAP (shs-yt) at epoch {epoch} and step {step}: {val_mAP_shs}")
 
-                if best_val_mAP is not None and val_mAP > best_val_mAP:
+                if best_val_mAP is None or val_mAP > best_val_mAP:
                     
                     best_val_mAP = val_mAP
                     
@@ -218,9 +219,9 @@ if __name__ == "__main__":
                         choices=["hard", "semihard"], 
                         help="Triplet Mining Strategy")
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=128, help="Training Dataset name")
+    parser.add_argument("--batch_size", type=int, default=64, help="Training Dataset name")
     parser.add_argument("--loss", type=str, choices=LOSSES.keys(), default="arcface_loss", help="loss function")
-    parser.add_argument("--val_every", type=int, default=100, help="how often to perform validation")
+    parser.add_argument("--val_every", type=int, default=25, help="how often to perform validation")
     parser.add_argument("--m_per_class", type=int, default=4,
                         help="Number of samples per class for each batch.-1 indicates random sampling instead.")
     parser.add_argument("--sbert", action="store_true", 

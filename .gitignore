@@ -3,3 +3,7 @@ htcondor
 wandb
 */__pycache__/
 __pycache__
+checkpoints/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/best.pt
+datasets/trec/train_5500.label
+datasets/trec/TREC_10.label
+annoying_example.py
