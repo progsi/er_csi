@@ -26,8 +26,10 @@ class TestDataset(Dataset):
         
         self.dataset_name = dataset_name
         
-        self.tokenizer = self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, additional_special_tokens=('[COL]', '[VAL]'))
-        
+        if tokenizer is not None:
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer, additional_special_tokens=('[COL]', '[VAL]'))
+        else:
+            self.tokenizer = None
         
         self.data_path = data_path
         self.metadata_file_path = metadata_file_path
@@ -69,8 +71,10 @@ class TestDataset(Dataset):
         item["yt_keywords"] = [
                 self.text_transform(keyword) for keyword in item_yt.keywords.item()
             ] if len(item_yt.keywords) > 0 else []
-        tokenized = self.tokenizer(self.serialize(item))
-        item["input_ids"], item["attention_mask"] = tokenized["input_ids"], tokenized["attention_mask"]
+        
+        if self.tokenizer is not None:
+            tokenized = self.tokenizer(self.serialize(item))
+            item["input_ids"], item["attention_mask"] = tokenized["input_ids"], tokenized["attention_mask"]
         
         return item
     
@@ -124,7 +128,15 @@ class TestDataset(Dataset):
         string = f'{string} [COL] description [VAL] {" ".join(item[f"yt_description"].split())}'.strip()
         string = f'{string} [COL] channel [VAL] {" ".join(str(item[f"yt_channel"]).split())}'.strip()
         return string
-        
+    
+    def get_df(self):
+        df = pd.merge(self.data, self.metadata, on='yt_id', how='left', suffixes=['_shs', '_yt'])
+        df.title_yt = df.title_yt.fillna('').apply(self.text_transform)        
+        df.channel_name = df.channel_name.fillna('').apply(self.text_transform)
+        df.description = df.description.fillna('').apply(self.text_transform)
+        df.keywords = df.keywords.fillna('')
+        return df
+    
 
 class TrainingDataset(Dataset):
     """This class iterates on sample level:

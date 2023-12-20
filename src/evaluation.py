@@ -51,9 +51,9 @@ class RetrievalEvaluation(object):
         # N x N matrix
         preds = self.pairwise_cosine_similarities(emb_all, emb_all2)
         
-        return self.__compute_metrics(preds, target)
+        return self.compute_metrics(preds, target)
     
-    def __compute_metrics(self, preds, target, cls_based=False):
+    def compute_metrics(self, preds, target, cls_based=False):
         """Computes various information retrieval metrics using torchmetrics.
         Args:
             preds (torch.tensor): similarity matrix MxN

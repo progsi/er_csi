@@ -78,7 +78,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
     os.makedirs(checkpoint_path, exist_ok=True)
     
     if sbert:
-        model = SBert(model_name, pooling='mean') # FIXME this doesnt work
+        model = SBert(model_name, pooling='mean') 
         # model = SentenceTransformer(model_name, device=config.device) # FIXME: I HATE SBERT
     else:
         pass
@@ -190,7 +190,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                     best_val_mAP = val_mAP
                     
                     torch.save({"model": model.state_dict()}, 
-                               os.path.join(checkpoint_path, "best.pt"))  
+                               os.path.join(checkpoint_path, f"{loss_name}_{batch_size}_best.pt"))  
                 
             loss_dict = {"loss": loss, 
                        "val_mAP_yt": val_mAP, "best_val_mAP_yt": best_val_mAP, 
@@ -211,7 +211,7 @@ if __name__ == "__main__":
                         choices=["shs100k2_train"], 
                         help="Training Dataset name")
     parser.add_argument("--val_dataset_name", type=str, default="shs100k2_val", 
-                        choices=["shs100k2_val", "shs-yt", "shs100k2_test"], 
+                        choices=["shs100k2_val500", "shs100k2_val", "shs-yt", "shs100k2_test"], 
                         help="Test Dataset name")
     parser.add_argument("--attr_pairs", type=str, default="yt-yt",
                         choices=["yt-yt", "shs-yt"])
@@ -219,9 +219,9 @@ if __name__ == "__main__":
                         choices=["hard", "semihard"], 
                         help="Triplet Mining Strategy")
     parser.add_argument("--epochs", type=int, default=1000)
-    parser.add_argument("--batch_size", type=int, default=64, help="Training Dataset name")
+    parser.add_argument("--batch_size", type=int, default=16, help="Training Dataset name")
     parser.add_argument("--loss", type=str, choices=LOSSES.keys(), default="arcface_loss", help="loss function")
-    parser.add_argument("--val_every", type=int, default=25, help="how often to perform validation")
+    parser.add_argument("--val_every", type=int, default=50, help="how often to perform validation")
     parser.add_argument("--m_per_class", type=int, default=4,
                         help="Number of samples per class for each batch.-1 indicates random sampling instead.")
     parser.add_argument("--sbert", action="store_true", 

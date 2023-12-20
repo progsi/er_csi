@@ -5,14 +5,13 @@ yt_metadata_file: /data/yt_metadata.parquet
 device: cuda
 
 #
-learning_rate: 0.001
-batch_size: 256
+learning_rate: 0.0001 # 1e-4
 
 # losses
 arcface_loss:
   num_classes: 5324
   embedding_size: 384
-  scale: 64
+  scale: 4 # default: 64
   margin: 28.6
 contrastive_loss:
   pos_margin: 0
@@ -24,7 +23,7 @@ multisimilarity_loss:
 ntxent_loss:
   temperature: 0.7
 triplet_loss:
-  margin: 0.05
+  margin: 0.3 # default 0.05
 
 
 
