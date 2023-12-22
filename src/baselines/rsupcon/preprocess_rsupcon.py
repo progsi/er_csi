@@ -40,7 +40,7 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
                 dataset = dataset.rename({"title": "title_left", "performer": "performer_left", 
                          "video_title": "video_title_right", 
                          "channel_name": "channel_name_right", 
-                         "description": "description_right"})
+                         "description": "description_right"}, axis=1)
             else:
                 dataset = pd.merge(
                         pd.merge(
