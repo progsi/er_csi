@@ -9,3 +9,4 @@ datasets/trec/TREC_10.label
 annoying_example.py
 results
 checkpoints
+src/baselines/rsupcon/condaenv.soq1rx4w.requirements.txt

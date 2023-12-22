@@ -15,9 +15,9 @@ General requirements: a file in `../data/shs100k2_yt.parquet` containing the ori
 
 ### Magellan
 
-1. If not done yet, do preprocessing steps + training for rSupCon.
-2. Activate env: `conda activate py_entitymatching`
-3. Go to  `magellan` and execute the notebook `select_best_matcher.ipynb` step by step.
+Dropped. We realized that `py_entitymatching` is not suitable for our usecase, because:
+- no asymmetric matching is supported (eg. two data sources do not share the same attribute types and numbers of attributes)
+- evaluating on the CSI test sets (eg. SHS100K and DaTacos) with mean average precision on N^2 pairs is incredibly slow using the provided catalogues. 
 
 ### HierGAT
 

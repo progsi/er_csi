@@ -1,4 +1,4 @@
-name: contrastive-product-matching
+name: rsupcon
 channels:
   - pytorch
   - nvidia
