@@ -15,7 +15,7 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
         
         interim = pd.DataFrame(
             pd.read_csv(f"{output_dir}valid_{n_pos_pairs_val}.csv").apply(gen_pair_id, axis=1), columns=["pair_id"])
-        interim.to_csv(f"{interim_path}/shs100k2_yt_{n_pos_pairs_val}-valid.csv", index=False, header=True)
+        interim.to_csv(f"{interim_path}/shs100k_{n_pos_pairs_val}-valid.csv", index=False, header=True)
     
     def to_interim_json():
         
@@ -60,29 +60,37 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
             dataset["pair_id"] = dataset.apply(gen_pair_id, axis=1)
             return dataset
         
-        print("Generating interim train...")
+        print("Generating interim train video-video...")
         interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
-            pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True)
+            pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), shs_side=False
             )
-        interim_train.to_json(f"{interim_path}/shs100k2_yt_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.to_json(f"{interim_path}/shs100k_vvL_{n_pos_pairs}-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
-
-        print("Generating interim test...")
-        interim_test = hell_of_a_join(test_pairs)
-        interim_test.to_json(f"{interim_path}/shs100k2_yt_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_train.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS_{n_pos_pairs}-train.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        
+        print("Generating interim test video-video...")
+        interim_test = hell_of_a_join(test_pairs, shs_side=False)
+        interim_test.to_json(f"{interim_path}/shs100k_vvL_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+                             compression='gzip', orient='records')
+        interim_test.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS_{n_pos_pairs_val}-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
 
         
-        print("Generating interim train with shs...")
+        print("Generating interim train song-video...")
         interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
             pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), shs_side=True
             )
-        interim_train.to_json(f"{interim_path}/shs100k2_shs_yt_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.to_json(f"{interim_path}/shs100k_svL_{n_pos_pairs}-train.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        interim_train.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS_{n_pos_pairs}-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
 
-        print("Generating interim test with shs...")
+        print("Generating interim test with song-video...")
         interim_test = hell_of_a_join(test_pairs, shs_side=True)
-        interim_test.to_json(f"{interim_path}/shs100k2_shs_yt_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_test.to_json(f"{interim_path}/shs100k_svL_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+                             compression='gzip', orient='records')
+        interim_test.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS_{n_pos_pairs_val}-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
         
     to_interim_json()
@@ -171,7 +179,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", type=str, default="/data/csi_datasets/shs100k2_yt.parquet",
                         help="path to parquet source file")
-    parser.add_argument("--output_dir", type=str, default="/home/repos/contrastive-product-matching/data/raw/shs100k2_yt/",
+    parser.add_argument("--output_dir", type=str, default="/home/repos/contrastive-product-matching/data/raw/shs100k/",
                         help="path to parquet source file")
     args = parser.parse_args()
     main(args.input_file, args.output_dir)
