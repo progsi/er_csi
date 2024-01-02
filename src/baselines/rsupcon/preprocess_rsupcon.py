@@ -172,8 +172,12 @@ def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_
     processed_output_dir = output_dir.replace('raw', 'processed') + 'contrastive/'
     os.makedirs(processed_output_dir, exist_ok=True)
     # write to processed
-    data_raw.loc[data_raw.yt_id.isin(relevant_yt_ids)].rename(
-        {"yt_id": "id", "set_id": "cluster_id"}, axis=1).to_pickle(
+    data_processed = data_raw.loc[data_raw.yt_id.isin(relevant_yt_ids)].rename(
+        {"yt_id": "id", "set_id": "cluster_id"}, axis=1)[
+            ["cluster_id", "id", "title", "performer", "video_title", "description", 
+             "channel_name", "keywords"]]
+    data_processed["keywords"] = data_processed["keywords"].fillna('').apply(lambda x: ' '.join(map(str, x)))    
+    data_processed.to_pickle(
             processed_output_dir + f'{handle}-train.pkl.gz', compression='gzip')
     
 
