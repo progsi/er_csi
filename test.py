@@ -4,6 +4,7 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from src.baselines.rsupcon.model import ContrastiveClassifierModel
+from src.baselines.blocking import Blocker
 from src.dataset import TestDataset
 from src.evaluation import RetrievalEvaluation
 import json
@@ -63,7 +64,7 @@ def __test_model(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
    
 
     
-def main(model_name: str, dataset_name: str):
+def main(model_name: str, blocking_func: str, dataset_name: str):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -71,7 +72,9 @@ def main(model_name: str, dataset_name: str):
         config_data = yaml.safe_load(f)
     
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
-     
+    
+    if blocking_func is not None:
+        blocker = Blocker(blocker=fuzz.blocking_func)
     if model_name == 'rsupcon':
         model = ContrastiveClassifierModel(
             model='roberta-base',
@@ -102,14 +105,17 @@ if __name__ == "__main__":
     parser.add_argument("--config_file", type=str, default="config.yml", 
                         help="Path to the configuration file")
     parser.add_argument("--model_name", type=str, default="rsupcon", 
-                        choices=["ditto", "hiergat", "sbert", "rsupcon", "magellan"], help="Model name")
+                        choices=["ditto", "hiergat", "sbert", "rsupcon", "magellan", "blocking"], help="Model name")
+    parser.add_argument("--blocking_func", type=str, default="token_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
 
     args = parser.parse_args()
 
-    main(args.model_name, args.dataset_name)    
+    assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
+    
+    main(args.model_name, args.blocker, args.dataset_name)    
     
         
         
