@@ -50,9 +50,10 @@ def main(dataset_path, repo_dir):
         val_tokenized = tokenize_df(data_val)
         
         # create dirs in Ditto and HierGAT
-        path_ditto = os.path.join(repo_dir, "ditto", "data", "shs100k")
+        dataset_name = dataset_path.split(os.sep)[-1]
+        path_ditto = os.path.join(repo_dir, "ditto", "data", dataset_name)
         os.makedirs(path_ditto, exist_ok=True)
-        path_hiergat = os.path.join(repo_dir, "HierGAT", "data", "shs100k")
+        path_hiergat = os.path.join(repo_dir, "HierGAT", "data", dataset_name)
         os.makedirs(path_hiergat, exist_ok=True)
         
         outfile = dataset_file.replace("shs100k_", "")
@@ -64,7 +65,7 @@ def main(dataset_path, repo_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="/home/repos/contrastive-product-matching/data/interim/shs100k",
+    parser.add_argument("--dataset_path", type=str, default="/home/repos/contrastive-product-matching/data/interim/shs100k_1000",
                         help="path to json lines source file")
     parser.add_argument("--repo_dir", type=str, default="/home/repos",
                         help="path to parquet source file")

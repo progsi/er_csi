@@ -3,19 +3,19 @@ import argparse
 import os
 
 
-def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_pairs, n_pos_pairs_val):
+def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_pairs):
     
     def gen_pair_id(x):
         return "left_" + x.ltable_id + "#right_" + x.rtable_id
         
     interim_path = output_dir.replace("raw", "interim")
-    # os.makedirs(interim_path, exist_ok=True)
+    os.makedirs(interim_path, exist_ok=True)
 
     def to_interim_csv():
         
         interim = pd.DataFrame(
-            pd.read_csv(f"{output_dir}valid_{n_pos_pairs_val}.csv").apply(gen_pair_id, axis=1), columns=["pair_id"])
-        interim.to_csv(f"{interim_path}/shs100k_{n_pos_pairs_val}-valid.csv", index=False, header=True)
+            pd.read_csv(f"{output_dir}valid.csv").apply(gen_pair_id, axis=1), columns=["pair_id"])
+        interim.to_csv(f"{interim_path}/shs100k_{n_pos_pairs}-valid.csv", index=False, header=True)
     
     def to_interim_json():
         
@@ -64,16 +64,16 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
         interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
             pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), shs_side=False
             )
-        interim_train.to_json(f"{interim_path}/shs100k_vvL_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.to_json(f"{interim_path}/shs100k_vvL-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
-        interim_train.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
         
         print("Generating interim test video-video...")
         interim_test = hell_of_a_join(test_pairs, shs_side=False)
-        interim_test.to_json(f"{interim_path}/shs100k_vvL_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_test.to_json(f"{interim_path}/shs100k_vvL-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
-        interim_test.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_test.drop(["description_left", "description_right"], axis=1).to_json(f"{interim_path}/shs100k_vvS-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
 
         
@@ -81,16 +81,16 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
         interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
             pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), shs_side=True
             )
-        interim_train.to_json(f"{interim_path}/shs100k_svL_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.to_json(f"{interim_path}/shs100k_svL-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
-        interim_train.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS_{n_pos_pairs}-train.json.gz", lines=True, 
+        interim_train.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS-train.json.gz", lines=True, 
                               compression='gzip', orient='records')
 
         print("Generating interim test with song-video...")
         interim_test = hell_of_a_join(test_pairs, shs_side=True)
-        interim_test.to_json(f"{interim_path}/shs100k_svL_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_test.to_json(f"{interim_path}/shs100k_svL-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
-        interim_test.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS_{n_pos_pairs_val}-gs.json.gz", lines=True, 
+        interim_test.drop(["description_right"], axis=1).to_json(f"{interim_path}/shs100k_svS-gs.json.gz", lines=True, 
                              compression='gzip', orient='records')
         
     to_interim_json()
@@ -100,6 +100,8 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
         
     
 def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_000):
+    
+    output_dir = '_'.join((output_dir, str(n_pos_pairs))) + os.sep
     
     def gen_pairs(data, n_pos_pairs=1_000, factor_neg=6):
 
@@ -129,7 +131,7 @@ def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_
     rel_cols = ["yt_id", "video_title", "channel_name", "description"]
     
     # save table file
-    data_raw[rel_cols].to_parquet(os.path.join(output_dir, f"table_{n_pos_pairs}.parquet"))
+    data_raw[rel_cols].to_parquet(os.path.join(output_dir, f"table.parquet"))
     
     # write train pairs
     print("Generating Training Pairs...")
@@ -138,7 +140,7 @@ def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_
         n_pos_pairs=n_pos_pairs, 
         factor_neg=6
         )
-    train_pairs.to_csv(os.path.join(output_dir, f"train_{n_pos_pairs}.csv"), index=False)
+    train_pairs.to_csv(os.path.join(output_dir, "train.csv"), index=False)
     
     # write test pairs
     print("Generating Test Pairs...")
@@ -147,7 +149,7 @@ def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_
         n_pos_pairs=n_pos_pairs_val,
         factor_neg=6
         )
-    test_pairs.to_csv(os.path.join(output_dir, f"test_{n_pos_pairs_val}.csv"), index=False)
+    test_pairs.to_csv(os.path.join(output_dir, "test.csv"), index=False)
     
     # write val pairs
     print("Generating Validation Pairs...")
@@ -156,17 +158,17 @@ def main(input_file: str, output_dir: str, n_pos_pairs=1_000, n_pos_pairs_val=1_
         n_pos_pairs=n_pos_pairs_val,
         factor_neg=6
         )
-    val_pairs.to_csv(os.path.join(output_dir, f"valid_{n_pos_pairs_val}.csv"), index=False)
+    val_pairs.to_csv(os.path.join(output_dir, "valid.csv"), index=False)
     
     # to interim subdir
-    to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_pairs, n_pos_pairs_val)
+    to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_pairs)
     
     # to filter metadata file
     relevant_yt_ids = train_pairs.ltable_id.to_list() + train_pairs.rtable_id.to_list() + \
         test_pairs.ltable_id.to_list() + test_pairs.rtable_id.to_list() + val_pairs.ltable_id.to_list() + \
             val_pairs.rtable_id.to_list()
     # build path
-    handle = output_dir.split('/')[-2] + f'_{n_pos_pairs}'
+    handle = output_dir.split('/')[-2] 
     processed_output_dir = output_dir.replace('raw', 'processed') + 'contrastive/'
     os.makedirs(processed_output_dir, exist_ok=True)
     # write to processed
@@ -179,7 +181,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", type=str, default="/data/csi_datasets/shs100k2_yt.parquet",
                         help="path to parquet source file")
-    parser.add_argument("--output_dir", type=str, default="/home/repos/contrastive-product-matching/data/raw/shs100k/",
+    parser.add_argument("--output_dir", type=str, default="/home/repos/contrastive-product-matching/data/raw/shs100k",
                         help="path to parquet source file")
     args = parser.parse_args()
     main(args.input_file, args.output_dir)

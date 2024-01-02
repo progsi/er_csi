@@ -15,13 +15,13 @@ cd $rsupcon_path/src/contrastive
 
 python run_pretraining_deepmatcher.py \
     --do_train \
-	--dataset_name=shs100k2_yt \
+	--dataset_name=shs100k \
 	--clean=True \
-    --train_file $rsupcon_path/data/processed/shs100k2_yt/contrastive/shs100k2_yt-train.pkl.gz \
-	--id_deduction_set $rsupcon_path/data/interim/shs100k2_yt/shs100k2_yt-train.json.gz \
+    --train_file $rsupcon_path/data/processed/shs100k/contrastive/shs100k_1000-train.pkl.gz \
+	--id_deduction_set $rsupcon_path/data/interim/shs100k/shs100k_1000-train.json.gz \
 	--tokenizer="roberta-base" \
 	--grad_checkpoint=True \
-    --output_dir $rsupcon_path/reports/contrastive/shs100k2_yt-$AUG$BATCH-$LR-$TEMP-roberta-base/ \
+    --output_dir $rsupcon_path/reports/contrastive/shs100k_1000-$AUG$BATCH-$LR-$TEMP-roberta-base/ \
 	--temperature=$TEMP \
 	--per_device_train_batch_size=$BATCH \
 	--learning_rate=$LR \
