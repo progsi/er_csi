@@ -64,7 +64,7 @@ def __test_model(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
    
 
     
-def main(model_name: str, blocking_func: str, dataset_name: str):
+def main(model_name: str, blocking_func: str, dataset_name: str, task: str):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -74,12 +74,12 @@ def main(model_name: str, blocking_func: str, dataset_name: str):
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
     
     if blocking_func is not None:
-        blocker = Blocker(blocker=fuzz.blocking_func)
+        blocker = Blocker(blocking_func=blocking_func)
     if model_name == 'rsupcon':
         model = ContrastiveClassifierModel(
             model='roberta-base',
-            len_tokenizer=len(dataset.tokenizer),
-            checkpoint_path="../contrastive-product-matching/reports/finetune/shs100k2_yt-all-256-5e-05-0.07-roberta-base/2/pytorch_model.bin",
+            len_tokenizer=512, # FIXME: fixed length
+            checkpoint_path="../contrastive-product-matching/reports/contrastive-ft-siamese/shs100k-shs100k_svS-train-all-256-all-5e-05-0.07-frozen-roberta-base",
             frozen=True,
             pos_neg=False)
     elif model_name == 'magellan':
@@ -110,12 +110,14 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
+    parser.add_argument("--task", type=str, default="svS", 
+                        choices=["svS", "vvS", "svL", "vvL"])
 
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
     
-    main(args.model_name, args.blocker, args.dataset_name)    
+    main(args.model_name, args.blocking_func, args.dataset_name, args.task)    
     
         
         
