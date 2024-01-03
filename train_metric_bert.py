@@ -152,13 +152,13 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 
             optimizer.zero_grad()
             
-            embs = model(batch["yt_title"])
+            embs = model(batch["video_title"])
 
             # metric learning
             if attr_pairs == "yt-yt":
                 embs_target = embs
             else:
-                embs_target = model(batch["shs_title"])
+                embs_target = model(batch["title"])
             
             if loss_name == "triplet_loss":
                 hard_triplets = miner(embeddings=embs, labels=labels, 

@@ -1,27 +1,33 @@
 import argparse
+import pandas as pd
+import os
 import time
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 from src.baselines.rsupcon.model import ContrastiveClassifierModel
+from src.baselines.ditto.model import DittoModel
+from src.baselines.hiergat.model import TranHGAT
 from src.baselines.blocking import Blocker
 from src.dataset import TestDataset
 from src.evaluation import RetrievalEvaluation
 import json
-import rapidfuzz
 from rapidfuzz import fuzz, process, distance
 import yaml
+from transformers import AutoTokenizer, AutoConfig
 
 
-def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matrix,
-         device: str, ir_eval: RetrievalEvaluation, print_all=False):
-
-    target_matrix = target_matrix.to(device)
+def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
+         device: str, ir_eval: RetrievalEvaluation, itemwise_embeddings: bool, 
+         blocker: Blocker, task: str, print_all=False):
     
     start_time = time.monotonic()
     
     # compute metrics
-    metrics_dict, metrics_dict2 = __test_model(model, dataset, device, ir_eval, target_matrix)
+    if itemwise_embeddings:
+        metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device)
+    else:
+        metrics_dict, metrics_dict2 = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device)            
         
     test_time = time.monotonic() - start_time
         
@@ -35,11 +41,51 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset, target_matri
     return metrics_dict, metrics_dict2
 
 
-def __test_model(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
-                 device: str, ir_eval: RetrievalEvaluation, target_matrix: torch.Tensor):
+def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker, 
+                          dataset: torch.utils.data.Dataset, task: str,
+                            ir_eval: RetrievalEvaluation, device: str):
+    """Embeddings on pair level (slow!), thus with blocking recommended.
+    """
+    model.eval()
+    model_name = type(model).__name__
+    tokenizer = dataset.tokenizer
     
+    left_df, right_df = dataset.get_dfs_by_task(task)
+    x_length, y_length = len(left_df), len(right_df)
+    
+    target_matrix = dataset.get_target_matrix().to(device)
+    blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
+    preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
+    
+    # iterating square matrix
+    for i in tqdm(range(x_length), desc="Generating pairs embeddings..."):
+        for j in range(y_length):
+            # check if result is blocked
+            if preds[i,j].item() > 0:
+                
+                if model_name == "ContrastiveClassifierModel":
+                
+                    input_ids, attention_mask = dataset.getitem_tokenized(i, "left", task)
+                    input_ids_right, attention_mask_right = dataset.getitem_tokenized(j, "right", task)
+                    
+                    labels = target_matrix[i,j].unsqueeze(0)
+                    
+                    (loss, pred) = model.forward(input_ids, attention_mask, labels, input_ids_right, attention_mask_right)
+                    
+                    preds[i,j] = pred.item()
+                    
+                else:
+                    pass 
+                
+    
+def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
+                            ir_eval: RetrievalEvaluation, device: str ):
+    """Embeddings on item level (fast!)
+    """
     model.eval()
 
+    target_matrix = dataset.get_target_matrix().to(device)
+    
     test_loader = DataLoader(dataset, batch_size=16, collate_fn=dataset.collate_fn)
 
     # A tensor to store all embeddings
@@ -62,9 +108,8 @@ def __test_model(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
         metrics_dict2 = ir_eval.eval(emb_all, target_matrix, emb_all2=emb_all2)
     return metrics_dict, metrics_dict2
    
-
     
-def main(model_name: str, blocking_func: str, dataset_name: str, task: str):
+def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -73,17 +118,22 @@ def main(model_name: str, blocking_func: str, dataset_name: str, task: str):
     
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
     
+    checkpoint_dir = os.path.join("checkpoints", model_name, tokenizer_name, task)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, additional_special_tokens=('[COL]', '[VAL]'))
+    
     if blocking_func is not None:
-        blocker = Blocker(blocking_func=blocking_func)
+        blocker = Blocker(blocking_func=blocking_func, threshold=0.5)
     if model_name == 'rsupcon':
         model = ContrastiveClassifierModel(
-            model='roberta-base',
-            len_tokenizer=512, # FIXME: fixed length
-            checkpoint_path="../contrastive-product-matching/reports/contrastive-ft-siamese/shs100k-shs100k_svS-train-all-256-all-5e-05-0.07-frozen-roberta-base",
+            model=tokenizer_name,
+            len_tokenizer=len(tokenizer), 
+            checkpoint_path=checkpoint_dir + os.sep + "pytorch_model.bin",
             frozen=True,
             pos_neg=False)
-    elif model_name == 'magellan':
-        pass
+    elif model_name == 'ditto':
+        model = DittoModel(device=device, lm=tokenizer)
+    elif model_name == 'hiergat':
+        model = TranHGAT(device=device, lm=tokenizer)
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
@@ -94,30 +144,32 @@ def main(model_name: str, blocking_func: str, dataset_name: str, task: str):
     dataset_name,
     config_data["data_path"],
     config_data["yt_metadata_file"],
-    tokenizer=model.tokenizer
+    tokenizer=tokenizer
     )
-
-    test(model, model_name, dataset, device, ir_eval)
+    
+    itemwise_embeddings = model_name == "sentence-transformer"
+    
+    test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task)
 
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--config_file", type=str, default="config.yml", 
-                        help="Path to the configuration file")
     parser.add_argument("--model_name", type=str, default="rsupcon", 
-                        choices=["ditto", "hiergat", "sbert", "rsupcon", "magellan", "blocking"], help="Model name")
+                        choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
+    parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
+                        choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
     parser.add_argument("--blocking_func", type=str, default="token_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
-    parser.add_argument("--task", type=str, default="svS", 
-                        choices=["svS", "vvS", "svL", "vvL"])
+    parser.add_argument("--task", type=str, default="svShort", 
+                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong"])
 
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
     
-    main(args.model_name, args.blocking_func, args.dataset_name, args.task)    
+    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task)    
     
         
         
