@@ -77,6 +77,14 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
                     logits = model(input_ids)
                     pred = logits.softmax(dim=1)[:, 1]
 
+                elif model_name == 'TranHGAT':
+                    
+                    _, x, y, masks, _ = dataset.getitem_hiergat(
+                        i, j, task, True ) # FIXME: split param is ignored!
+                    logits, y1, y_hat = model(x.unsqueeze(1), torch.tensor(y), masks.unsqueeze(1))
+                    logits = logits.view(-1, logits.shape[-1])
+                    y1 = y1.view(-1)
+                
                 preds[i,j] = pred.item()
                     
                     
@@ -132,6 +140,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     if blocking_func is not None:
         blocker = Blocker(blocking_func=blocking_func, threshold=0.5)
     if model_name == 'rsupcon':
+        attr_num = None
         model = ContrastiveClassifierModel(
             model=tokenizer_name,
             len_tokenizer=len(tokenizer), 
@@ -139,6 +148,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             frozen=True,
             pos_neg=False)
     elif model_name == 'ditto':
+        attr_num = None
         model = DittoModel(device=device)
         checkpoint = checkpoint_dir + os.sep + "model.pt"
         if os.path.isfile(checkpoint):
@@ -146,7 +156,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             model.load_state_dict(saved_state['model'])
         model.cuda()
     elif model_name == 'hiergat':
-        attr_num = 4 # FIXME: random number here!
+        attr_num = 2 if "Long" not in task and "+Tags" not in task else 3
         model = TranHGAT(device=device, attr_num=attr_num)
     else:
         print(f"Model {model_name} is not implemented!")
@@ -158,7 +168,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     dataset_name,
     config_data["data_path"],
     config_data["yt_metadata_file"],
-    tokenizer=tokenizer
+    tokenizer=tokenizer,
+    attr_num=attr_num
     )
     
     itemwise_embeddings = model_name == "sentence-transformer"
@@ -168,7 +179,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--model_name", type=str, default="ditto", 
+    parser.add_argument("--model_name", type=str, default="hiergat", 
                         choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
