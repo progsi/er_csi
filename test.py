@@ -48,7 +48,6 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     """
     model.eval()
     model_name = type(model).__name__
-    tokenizer = dataset.tokenizer
     
     left_df, right_df = dataset.get_dfs_by_task(task)
     x_length, y_length = len(left_df), len(right_df)
@@ -72,10 +71,15 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
                     
                     (loss, pred) = model.forward(input_ids, attention_mask, labels, input_ids_right, attention_mask_right)
                     
-                    preds[i,j] = pred.item()
+                elif model_name == "DittoModel":
                     
-                else:
-                    pass 
+                    input_ids, labels = dataset.getitem_pair_tokenized(i, j, task)
+                    logits = model(input_ids)
+                    pred = logits.softmax(dim=1)[:, 1]
+
+                preds[i,j] = pred.item()
+                    
+                    
                 
     
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
@@ -119,7 +123,11 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
     
     checkpoint_dir = os.path.join("checkpoints", model_name, tokenizer_name, task)
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, additional_special_tokens=('[COL]', '[VAL]'))
+    if model_name == "rsupcon":
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, additional_special_tokens=('[COL]', '[VAL]'))
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
+        
     
     if blocking_func is not None:
         blocker = Blocker(blocking_func=blocking_func, threshold=0.5)
@@ -131,9 +139,15 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             frozen=True,
             pos_neg=False)
     elif model_name == 'ditto':
-        model = DittoModel(device=device, lm=tokenizer)
+        model = DittoModel(device=device)
+        checkpoint = checkpoint_dir + os.sep + "model.pt"
+        if os.path.isfile(checkpoint):
+            saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+            model.load_state_dict(saved_state['model'])
+        model.cuda()
     elif model_name == 'hiergat':
-        model = TranHGAT(device=device, lm=tokenizer)
+        attr_num = 4 # FIXME: random number here!
+        model = TranHGAT(device=device, attr_num=attr_num)
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
@@ -154,7 +168,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--model_name", type=str, default="rsupcon", 
+    parser.add_argument("--model_name", type=str, default="ditto", 
                         choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])

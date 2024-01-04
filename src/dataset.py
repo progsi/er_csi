@@ -152,6 +152,27 @@ class TestDataset(Dataset):
                         return_tensors="pt")
         return tokenized["input_ids"].to(self.device), tokenized["attention_mask"].to(self.device)
 
+    def getitem_pair_tokenized(self, idx_left, idx_right, task):
+        
+        item_left = self[idx_left]
+        item_right = self[idx_right]
+        labels = torch.tensor(1 if item_left["set_id"] == item_right["set_id"] else 0)
+
+        left_cols, right_cols = self.__get_cols_by_task(task)
+        
+        serialized_text_left = self.serialize_item(item_left, left_cols)
+        serialized_text_right = self.serialize_item(item_right, right_cols)
+
+        tokenized = self.tokenizer.encode(text=serialized_text_left,
+                                  text_pair=serialized_text_right,
+                                  max_length=256,
+                                  truncation=True,
+                                  return_tensors="pt")
+        return tokenized, labels        
+
+
+        
+        
     def __get_cols_by_task(self, task: str):
         
         if task == "svShort":
