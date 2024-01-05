@@ -27,7 +27,7 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     if itemwise_embeddings:
         metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device)
     else:
-        metrics_dict, metrics_dict2 = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device)            
+        metrics_dict, _ = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device)            
         
     test_time = time.monotonic() - start_time
         
@@ -80,16 +80,18 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
                 elif model_name == 'TranHGAT':
                     
                     _, x, y, masks, _ = dataset.getitem_hiergat(
-                        i, j, task, True ) # FIXME: split param is ignored!
-                    logits, y1, y_hat = model(x.unsqueeze(1), torch.tensor(y), masks.unsqueeze(1))
+                        i, j, task, True ) # FIXME: split param is fixed!
+                    logits, y1, y_hat = model(x, y, masks)
                     logits = logits.view(-1, logits.shape[-1])
                     pred = y_hat.view(-1)
                 
                 preds[i,j] = pred.item()
-                    
-                    
                 
-    
+    print(f"Evaluation task {task}")
+    metrics_dict = ir_eval.eval(target_matrix, preds=preds)
+    return metrics_dict, _
+           
+                    
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
                             ir_eval: RetrievalEvaluation, device: str ):
     """Embeddings on item level (fast!)
@@ -115,9 +117,9 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
             emb_all2 = torch.cat((emb_all2, embs_target))
 
         print("Evaluation YouTube -- YouTube")
-        metrics_dict = ir_eval.eval(emb_all, target_matrix)
+        metrics_dict = ir_eval.eval(target_matrix, emb_all=emb_all)
         print("Evaluation SHS -- YouTube")
-        metrics_dict2 = ir_eval.eval(emb_all, target_matrix, emb_all2=emb_all2)
+        metrics_dict2 = ir_eval.eval(target_matrix, emb_all=emb_all, emb_all2=emb_all2)
     return metrics_dict, metrics_dict2
    
     
@@ -156,8 +158,17 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             model.load_state_dict(saved_state['model'])
         model.cuda()
     elif model_name == 'hiergat':
-        attr_num = 1 # 2 if "Long" not in task and "+Tags" not in task else 3
+        split = True # FIXME: this should go to a yaml config file
+        if split:
+            attr_num = 3 if "Long" in task or "+Tags" in task else 2
+        else:
+            attr_num = 1
         model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
+        checkpoint = checkpoint_dir + os.sep + "model.pt"
+        if os.path.isfile(checkpoint):
+            saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+            model.load_state_dict(saved_state)
+        model.cuda()
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError

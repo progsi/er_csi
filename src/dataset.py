@@ -224,7 +224,7 @@ class TestDataset(Dataset):
         #left_zslens = [len(left_z) for left_z in left_zs]
         #right_zslens = [len(right_z) for right_z in right_zs]
 
-        return sent, x, label, masks, attrs
+        return sent, x.unsqueeze(0), label, masks.unsqueeze(0), attrs
       
     def __get_cols_by_task(self, task: str):
         
