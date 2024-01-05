@@ -3,28 +3,27 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .layer import AttentionLayer as AL, GlobalAttentionLayer as GoAL, StructAttentionLayer as SAL
-from .dataset import get_lm_path
 
 
 class TranHGAT(nn.Module):
-    def __init__(self, attr_num, device='cpu', finetuning=True, lm='bert', lm_path=None):
+    def __init__(self, attr_num, device='cpu', finetuning=True, lm='bert'):
         super().__init__()
 
         # load the model or model checkpoint
-        path = get_lm_path(lm, lm_path)
         self.lm = lm
-        if lm == 'bert':
+            
+        if lm == 'bert-base-uncased':
             from transformers import BertModel
-            self.bert = BertModel.from_pretrained(path)
-        elif lm == 'distilbert':
+            self.bert = BertModel.from_pretrained(self.lm)
+        elif lm == 'distilbert-base':
             from transformers import DistilBertModel
-            self.bert = DistilBertModel.from_pretrained(path)
-        elif lm == 'roberta':
+            self.bert = DistilBertModel.from_pretrained(self.lm)
+        elif lm == 'roberta-base':
             from transformers import RobertaModel
-            self.bert = RobertaModel.from_pretrained(path)
-        elif lm == 'xlnet':
+            self.bert = RobertaModel.from_pretrained(self.lm)
+        elif lm == 'xlnet-base-cased':
             from transformers import XLNetModel
-            self.bert = XLNetModel.from_pretrained(path)
+            self.bert = XLNetModel.from_pretrained(self.lm)
 
         self.device = device
         self.finetuning = finetuning

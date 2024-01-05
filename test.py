@@ -83,7 +83,7 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
                         i, j, task, True ) # FIXME: split param is ignored!
                     logits, y1, y_hat = model(x.unsqueeze(1), torch.tensor(y), masks.unsqueeze(1))
                     logits = logits.view(-1, logits.shape[-1])
-                    y1 = y1.view(-1)
+                    pred = y_hat.view(-1)
                 
                 preds[i,j] = pred.item()
                     
@@ -156,8 +156,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             model.load_state_dict(saved_state['model'])
         model.cuda()
     elif model_name == 'hiergat':
-        attr_num = 2 if "Long" not in task and "+Tags" not in task else 3
-        model = TranHGAT(device=device, attr_num=attr_num)
+        attr_num = 1 # 2 if "Long" not in task and "+Tags" not in task else 3
+        model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError

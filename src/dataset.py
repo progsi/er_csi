@@ -186,7 +186,7 @@ class TestDataset(Dataset):
         serialized_text_right = self.serialize_item(item_right, right_cols).replace("[", "").replace("]", "")
 
         sent = serialized_text_left + ' [SEP] ' + serialized_text_right
-        label = str(1 if item_left["set_id"] == item_right["set_id"] else 0)
+        label = torch.tensor(1 if item_left["set_id"] == item_right["set_id"] else 0).unsqueeze(0)
         
         items = [serialized_text_left, serialized_text_right, label]
         if split:
@@ -224,7 +224,7 @@ class TestDataset(Dataset):
         #left_zslens = [len(left_z) for left_z in left_zs]
         #right_zslens = [len(right_z) for right_z in right_zs]
 
-        return sent, x, int(label), masks, attrs
+        return sent, x, label, masks, attrs
       
     def __get_cols_by_task(self, task: str):
         
