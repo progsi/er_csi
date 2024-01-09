@@ -53,40 +53,45 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     x_length, y_length = len(left_df), len(right_df)
     
     target_matrix = dataset.get_target_matrix().to(device)
+    
+    # get indices to predict on
     blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
+    pred_indices = torch.nonzero(blocking_mask.triu(1))
+    
     preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
     
     # iterating square matrix
-    for i in tqdm(range(x_length), desc="Generating pairs embeddings..."):
-        for j in range(y_length):
-            # check if result is blocked
-            if preds[i,j].item() > 0:
-                
-                if model_name == "ContrastiveClassifierModel":
-                
-                    input_ids, attention_mask = dataset.getitem_tokenized(i, "left", task)
-                    input_ids_right, attention_mask_right = dataset.getitem_tokenized(j, "right", task)
-                    
-                    labels = target_matrix[i,j].unsqueeze(0)
-                    
-                    (loss, pred) = model.forward(input_ids, attention_mask, labels, input_ids_right, attention_mask_right)
-                    
-                elif model_name == "DittoModel":
-                    
-                    input_ids, labels = dataset.getitem_pair_tokenized(i, j, task)
-                    logits = model(input_ids)
-                    pred = logits.softmax(dim=1)[:, 1]
+    for i, j in tqdm(pred_indices, desc="Generating pairs embeddings..."):
+        
+        i, j = i.item(), j.item()
+        
+        if model_name == "ContrastiveClassifierModel":
+        
+            input_ids, attention_mask = dataset.getitem_tokenized(i, "left", task)
+            input_ids_right, attention_mask_right = dataset.getitem_tokenized(j, "right", task)
+            
+            labels = target_matrix[i,j].unsqueeze(0)
+            
+            (loss, pred) = model.forward(input_ids, attention_mask, labels, input_ids_right, attention_mask_right)
+            
+        elif model_name == "DittoModel":
+            
+            input_ids, labels = dataset.getitem_pair_tokenized(i, j, task)
+            logits = model(input_ids)
+            pred = logits.softmax(dim=1)[:, 1]
 
-                elif model_name == 'TranHGAT':
-                    
-                    _, x, y, masks, _ = dataset.getitem_hiergat(
-                        i, j, task, True ) # FIXME: split param is fixed!
-                    logits, y1, y_hat = model(x, y, masks)
-                    logits = logits.view(-1, logits.shape[-1])
-                    pred = y_hat.view(-1)
-                
-                preds[i,j] = pred.item()
-                
+        elif model_name == 'TranHGAT':
+            
+            _, x, y, masks, _ = dataset.getitem_hiergat(
+                i, j, task, True ) # FIXME: split param is fixed!
+            logits, y1, y_hat = model(x, y, masks)
+            logits = logits.view(-1, logits.shape[-1])
+            pred = y_hat.view(-1)
+        
+        preds[i,j] = pred.item()
+        preds[j,i] = pred.item()
+        
+            
     print(f"Evaluation task {task}")
     metrics_dict = ir_eval.eval(target_matrix, preds=preds)
     return metrics_dict, _

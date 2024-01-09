@@ -7,6 +7,8 @@ from rapidfuzz import process, fuzz, distance
 import yaml
 import json
 from nltk.stem.snowball import SnowballStemmer
+from torchmetrics.classification import BinaryRecall
+from torchmetrics.retrieval import RetrievalMAP, RetrievalNormalizedDCG
 
 
 def main(benchmark: str, dataset_name: str):
@@ -23,21 +25,52 @@ def main(benchmark: str, dataset_name: str):
         config_data["yt_metadata_file"],
         tokenizer=None
     )
-
-    ir_eval = RetrievalEvaluation(top_k=10, device=device)
      
     if benchmark == 'funcs':
-        result_dict = benchmark_fuzzy_functions(dataset, ir_eval, dataset.get_target_matrix(), device)
+        result_dict = benchmark_fuzzy_functions(dataset, dataset.get_target_matrix(), device)
         with open(f"results/{dataset_name}/{benchmark}/results.json", "w") as f:
             json.dump(result_dict, f)
     elif benchmark == 'attrs':
-        result_dict = benchmark_fuzzy_attributes(dataset, ir_eval, dataset.get_target_matrix(), device, scorer=fuzz.token_ratio)
+        result_dict = benchmark_fuzzy_attributes(dataset, dataset.get_target_matrix(), device, scorer="fuzz.token_ratio")
         with open(f"results/{dataset_name}/{benchmark}/results.json", "w") as f:
             json.dump(result_dict, f)
     
+
+def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset, 
+                                 target_matrix: torch.Tensor, device: str, scorer):
+    
+    result_list = []
+    
+    data = dataset.get_df()
+    
+    items_shs = data.apply(lambda x: x.title_shs + ' ' + x.performer, axis=1).to_list()
+    items_shs_short = data.title_shs.to_list()
+    items_yt_short = data.apply(lambda x: x.title_yt + ' ' + x.channel_name, axis=1).to_list()
+    
+    thresholds = [i for i in range(0.1, 0.9)]
+
+    start_time = time.monotonic()
+
+    for thr in thresholds:
+
+        recall = BinaryRecall(threshold=thr).to(device)
         
-def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, ir_eval: RetrievalEvaluation, 
-                   target_matrix: torch.Tensor, device: str, scorer):
+        try:
+            print(f"Scoring {scorer}")
+            prediction_matrix = torch.tensor(process.cdist(shs_side, items_yt_short, scorer=eval(scorer), workers=64))
+
+            if torch.max(prediction_matrix) > 1:
+                prediction_matrix = (prediction_matrix - prediction_matrix.min()) / (prediction_matrix.max() - prediction_matrix.min())
+        
+        except:
+            print(f"Skipped {scorer}")
+            continue
+    
+        test_time = time.monotonic() - start_time
+            
+
+def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix: torch.Tensor, 
+                               device: str, scorer):
     
     result_list = []
     
@@ -63,6 +96,10 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, ir_eval: Retri
     
     stemmer = SnowballStemmer(language="english")
     
+    recall = BinaryRecall(threshold=0.5).to(device)
+    mAP = RetrievalMAP(empty_target_action="skip").to(device)
+    nDCG = RetrievalNormalizedDCG(empty_target_action="skip").to(device)
+
     for (eval_type, shs_side, yt_side) in evals:
         for stemming in [True, False]:
             
@@ -71,40 +108,51 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, ir_eval: Retri
             try:
                 print(f"Scoring {eval_type}")
                 processor = stemmer.stem if stemming else None
-                prediction_matrix = process.cdist(shs_side, yt_side, scorer=scorer, 
-                                                  workers=64, processor=processor)
+                prediction_matrix =  torch.tensor(process.cdist(shs_side, yt_side, scorer=scorer, 
+                                                  workers=64, processor=processor))
+                if torch.max(prediction_matrix) > 1:
+                    prediction_matrix = (prediction_matrix - prediction_matrix.min()) / (prediction_matrix.max() - prediction_matrix.min())
+
             except:
                 print(f"Skipped {eval_type}")
                 continue
         
             test_time = time.monotonic() - start_time
 
+            preds, target = prediction_matrix.to(device), target_matrix.to(device)
+            m, n = target.shape
+            indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(device)
+
             try:
-                results = ir_eval.compute_metrics(torch.tensor(prediction_matrix).to(device), target_matrix.to(device))
+                map = mAP(preds, target, indexes=indexes)
+                ndcg = nDCG(preds, target, indexes=indexes)
             except torch.cuda.OutOfMemoryError:
-                print(f"Out of Memory for {scorer.__name__}")
+                print(f"Out of Memory for {eval_type}")
                 continue
             
-            print(f"{results['mAP']}, inference time: {test_time}, stemming: {stemming}")
+            rc = recall(preds, target).item()
+            print(f"Recall: {round(rc, 4)}, inference time: {test_time}, stemming: {stemming}")
+            print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}, stemming: {stemming}")
+            print(f"nDCG: {round(ndcg.item(), 4)}, inference time: {test_time}, stemming: {stemming}")
 
-            results = {"scorer": scorer.__name__, "stemming": stemming, "eval": eval_type, "time": test_time, **results}
+            results = {"scorer": scorer, "stemming": stemming, "eval": eval_type, "time": test_time, 
+                       "Recall": round(rc, 4), "map": round(map.item(), 4), "nDCG": round(ndcg.item(), 4)}
             result_list.append(results)             
             
     return result_list
 
     
-def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, ir_eval: RetrievalEvaluation, 
-                   target_matrix: torch.Tensor, device: str):
+def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, target_matrix: torch.Tensor, device: str):
     """Benchmarks all fuzzy functions with YouTube title and channel attributes and SHS attributes.
     """
     # getting all fuzzy functions
-    scorers = [fuzz.ratio, fuzz.token_ratio, fuzz.partial_ratio, 
-               fuzz.token_set_ratio, fuzz.partial_token_set_ratio, 
-               fuzz.token_sort_ratio, fuzz.partial_token_sort_ratio,  
-               distance.DamerauLevenshtein.normalized_similarity, 
-               distance.JaroWinkler.normalized_similarity, 
-               distance.LCSseq.normalized_similarity, 
-               distance.Hamming.normalized_similarity, fuzz.WRatio, fuzz.QRatio]
+    scorers = ["fuzz.ratio", "fuzz.token_ratio", "fuzz.partial_ratio", 
+               "fuzz.token_set_ratio", "fuzz.partial_token_set_ratio", 
+               "fuzz.token_sort_ratio", "fuzz.partial_token_sort_ratio",  
+               "distance.DamerauLevenshtein.normalized_similarity", 
+               "distance.JaroWinkler.normalized_similarity", 
+               "distance.LCSseq.normalized_similarity", 
+               "distance.Hamming.normalized_similarity", "fuzz.WRatio", "fuzz.QRatio"]
     
     result_list = []
     
@@ -114,31 +162,47 @@ def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, ir_eval: Retrie
     items_shs_short = data.title_shs.to_list()
     items_yt_short = data.apply(lambda x: x.title_yt + ' ' + x.channel_name, axis=1).to_list()
     
+    recall = BinaryRecall(threshold=0.5).to(device)
+    mAP = RetrievalMAP(empty_target_action="skip").to(device)
+    nDCG = RetrievalNormalizedDCG(empty_target_action="skip").to(device)
+
     for scorer in scorers:
         
         for (eval_type, shs_side) in [("title", items_shs_short), ("performer+title", items_shs)]:
             
             start_time = time.monotonic()
 
-            func_name = scorer.__module__ + '_' + scorer.__name__
             try:
-                print(f"Scoring {func_name}")
-                prediction_matrix = process.cdist(shs_side, items_yt_short, scorer=scorer, workers=64)
+                print(f"Scoring {scorer}")
+                prediction_matrix = torch.tensor(process.cdist(shs_side, items_yt_short, scorer=eval(scorer), workers=64))
+
+                if torch.max(prediction_matrix) > 1:
+                    prediction_matrix = (prediction_matrix - prediction_matrix.min()) / (prediction_matrix.max() - prediction_matrix.min())
+            
             except:
-                print(f"Skipped {func_name}")
+                print(f"Skipped {scorer}")
                 continue
         
             test_time = time.monotonic() - start_time
-        
+            
+            preds, target = prediction_matrix.to(device), target_matrix.to(device)
+            m, n = target.shape
+            indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(device)
+            
             try:
-                results = ir_eval.compute_metrics(torch.tensor(prediction_matrix).to(device), target_matrix.to(device))
+                map = mAP(preds, target, indexes=indexes)
+                ndcg = nDCG(preds, target, indexes=indexes)
             except torch.cuda.OutOfMemoryError:
                 print(f"Out of Memory for {scorer.__name__}")
                 continue
             
-            print(f"{results['mAP']}, inference time: {test_time}")
+            rc = round(recall(preds, target).item(), 4)
+            print(f"Recall: {round(rc, 4)}, inference time: {test_time}")
+            print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}")
+            print(f"mAP: {round(ndcg.item(), 4)}, inference time: {test_time}")
 
-            results = {"scorer": func_name, "eval": eval_type, "time": test_time, **results}
+            results = {"scorer": scorer, "eval": eval_type, "time": test_time, 
+                       "Recall": round(rc, 4), "map": round(map.item(), 4), "nDCG": round(ndcg.item(), 4)}
             result_list.append(results)             
             
     return result_list
@@ -146,7 +210,7 @@ def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, ir_eval: Retrie
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark fuzzy functions.")
-    parser.add_argument("--benchmark", type=str, default="attrs", 
+    parser.add_argument("--benchmark", type=str, default="funcs", 
                         choices=["funcs", "attrs"], help="Benchmark type")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_val", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
