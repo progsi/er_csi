@@ -145,7 +145,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
     
     if blocking_func is not None:
-        blocker = Blocker(blocking_func=blocking_func, threshold=0.5)
+        blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.4)
     if model_name == 'rsupcon':
         attr_num = None
         model = ContrastiveClassifierModel(
@@ -199,7 +199,7 @@ if __name__ == "__main__":
                         choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
-    parser.add_argument("--blocking_func", type=str, default="token_ratio")
+    parser.add_argument("--blocking_func", type=str, default="distance.JaroWinkler.normalized_similarity")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")

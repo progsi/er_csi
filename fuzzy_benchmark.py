@@ -11,8 +11,14 @@ from torchmetrics.classification import BinaryRecall
 from torchmetrics.retrieval import RetrievalMAP, RetrievalNormalizedDCG
 
 
-def main(benchmark: str, dataset_name: str):
-    
+def main(benchmark: str, dataset_name: str, scorer: str):
+
+    def __list_to_jsonl(filepath, data):
+        with open(filepath, 'a+') as file:
+            # Write each dictionary as a JSON line
+            for record in data:
+                json.dump(record, file)
+                file.write('\n')  # Add a newline after each JSON object
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -28,13 +34,12 @@ def main(benchmark: str, dataset_name: str):
      
     if benchmark == 'funcs':
         result_dict = benchmark_fuzzy_functions(dataset, dataset.get_target_matrix(), device)
-        with open(f"results/{dataset_name}/{benchmark}/results.json", "w") as f:
-            json.dump(result_dict, f)
     elif benchmark == 'attrs':
-        result_dict = benchmark_fuzzy_attributes(dataset, dataset.get_target_matrix(), device, scorer="fuzz.token_ratio")
-        with open(f"results/{dataset_name}/{benchmark}/results.json", "w") as f:
-            json.dump(result_dict, f)
-    
+        result_dict = benchmark_fuzzy_attributes(dataset, dataset.get_target_matrix(), device, scorer=scorer)
+    elif benchmark == 'thresholds':
+        result_dict = benchmark_blocking_threshold(dataset, dataset.get_target_matrix(), device, scorer=scorer)
+    __list_to_jsonl(f"results/{dataset_name}/{benchmark}/results.json", result_dict)
+
 
 def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset, 
                                  target_matrix: torch.Tensor, device: str, scorer):
@@ -44,10 +49,12 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
     data = dataset.get_df()
     
     items_shs = data.apply(lambda x: x.title_shs + ' ' + x.performer, axis=1).to_list()
-    items_shs_short = data.title_shs.to_list()
     items_yt_short = data.apply(lambda x: x.title_yt + ' ' + x.channel_name, axis=1).to_list()
     
-    thresholds = [i for i in range(0.1, 0.9)]
+    mAP = RetrievalMAP(empty_target_action="skip").to(device)
+    nDCG = RetrievalNormalizedDCG(empty_target_action="skip").to(device)
+    
+    thresholds = [round(i.item(), 1) for i in torch.arange(0.1, 1.0, 0.1)]
 
     start_time = time.monotonic()
 
@@ -56,8 +63,9 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
         recall = BinaryRecall(threshold=thr).to(device)
         
         try:
-            print(f"Scoring {scorer}")
-            prediction_matrix = torch.tensor(process.cdist(shs_side, items_yt_short, scorer=eval(scorer), workers=64))
+            print(f"\nScoring {scorer}, threshold: {thr}")
+            prediction_matrix = torch.tensor(process.cdist(items_shs, items_yt_short, scorer=eval(scorer), workers=64))
+
 
             if torch.max(prediction_matrix) > 1:
                 prediction_matrix = (prediction_matrix - prediction_matrix.min()) / (prediction_matrix.max() - prediction_matrix.min())
@@ -67,6 +75,31 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
             continue
     
         test_time = time.monotonic() - start_time
+
+        preds, target = prediction_matrix.to(device), target_matrix.to(device)
+        m, n = target.shape
+        indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(device)
+
+        map = mAP(preds, target, indexes=indexes)
+        ndcg = nDCG(preds, target, indexes=indexes)
+        rc = recall(preds, target).item()
+
+        pairs = preds[preds > thr].sum().item()
+        items = preds.shape[0]
+        pair_item_ratio = pairs / items
+        match_ratio = pairs / items**2
+        
+        print(f"Recall: {round(rc, 4)}, inference time: {test_time}")
+        print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}")
+        print(f"nDCG: {round(ndcg.item(), 4)}, inference time: {test_time}")
+        print(f"nPairs: {round(pairs)}, P/E ratio: {round(pair_item_ratio, 2)}, Match Ratio: {round(match_ratio, 2)}")
+
+        results = {"scorer": scorer, "eval_type": "threshold", "time": test_time, "threshold": thr, "n_pairs": round(pairs), 
+                   "pair_entity_ratio":  round(pair_item_ratio, 2), "match_ratio": round(match_ratio, 2), 
+                    "Recall": round(rc, 4), "map": round(map.item(), 4), "nDCG": round(ndcg.item(), 4)}
+        result_list.append(results)   
+
+    return result_list      
             
 
 def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix: torch.Tensor, 
@@ -106,7 +139,7 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix:
             start_time = time.monotonic()
 
             try:
-                print(f"Scoring {eval_type}")
+                print(f"\nScoring {eval_type}")
                 processor = stemmer.stem if stemming else None
                 prediction_matrix =  torch.tensor(process.cdist(shs_side, yt_side, scorer=scorer, 
                                                   workers=64, processor=processor))
@@ -123,14 +156,10 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix:
             m, n = target.shape
             indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(device)
 
-            try:
-                map = mAP(preds, target, indexes=indexes)
-                ndcg = nDCG(preds, target, indexes=indexes)
-            except torch.cuda.OutOfMemoryError:
-                print(f"Out of Memory for {eval_type}")
-                continue
-            
+            map = mAP(preds, target, indexes=indexes)
+            ndcg = nDCG(preds, target, indexes=indexes)
             rc = recall(preds, target).item()
+            
             print(f"Recall: {round(rc, 4)}, inference time: {test_time}, stemming: {stemming}")
             print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}, stemming: {stemming}")
             print(f"nDCG: {round(ndcg.item(), 4)}, inference time: {test_time}, stemming: {stemming}")
@@ -173,7 +202,7 @@ def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, target_matrix: 
             start_time = time.monotonic()
 
             try:
-                print(f"Scoring {scorer}")
+                print(f"\nScoring {scorer}, {eval_type}")
                 prediction_matrix = torch.tensor(process.cdist(shs_side, items_yt_short, scorer=eval(scorer), workers=64))
 
                 if torch.max(prediction_matrix) > 1:
@@ -189,33 +218,37 @@ def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, target_matrix: 
             m, n = target.shape
             indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(device)
             
-            try:
-                map = mAP(preds, target, indexes=indexes)
-                ndcg = nDCG(preds, target, indexes=indexes)
-            except torch.cuda.OutOfMemoryError:
-                print(f"Out of Memory for {scorer.__name__}")
-                continue
-            
-            rc = round(recall(preds, target).item(), 4)
+            map = mAP(preds, target, indexes=indexes)
+            ndcg = nDCG(preds, target, indexes=indexes)
+            rc = recall(preds, target).item()
+
+            pairs = preds[preds > 0.5].sum().item()
+            items = preds.shape[0]
+            pair_item_ratio = pairs / items
+            match_ratio = pairs / items**2
+        
             print(f"Recall: {round(rc, 4)}, inference time: {test_time}")
             print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}")
-            print(f"mAP: {round(ndcg.item(), 4)}, inference time: {test_time}")
+            print(f"nDCG: {round(ndcg.item(), 4)}, inference time: {test_time}")
+            print(f"nPairs: {round(pairs)}, P/E ratio: {round(pair_item_ratio, 2)}, Match Ratio: {round(match_ratio, 2)}")
 
-            results = {"scorer": scorer, "eval": eval_type, "time": test_time, 
+            results = {"scorer": scorer, "eval": eval_type, "time": test_time, "n_pairs": round(pairs), 
+                   "pair_entity_ratio":  round(pair_item_ratio, 2), "match_ratio": round(match_ratio, 2),
                        "Recall": round(rc, 4), "map": round(map.item(), 4), "nDCG": round(ndcg.item(), 4)}
             result_list.append(results)             
-            
+
     return result_list
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Benchmark fuzzy functions.")
-    parser.add_argument("--benchmark", type=str, default="funcs", 
-                        choices=["funcs", "attrs"], help="Benchmark type")
+    parser.add_argument("--benchmark", type=str, default="thresholds", 
+                        choices=["funcs", "attrs", "thresholds"], help="Benchmark type")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_val", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
+    parser.add_argument("--scorer", type=str, default="distance.JaroWinkler.normalized_similarity")
 
     args = parser.parse_args()
 
-    main(args.benchmark, args.dataset_name)    
+    main(args.benchmark, args.dataset_name, args.scorer)    

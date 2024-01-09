@@ -1,6 +1,7 @@
 .vscode
 htcondor
 wandb
+preds
 */__pycache__/
 __pycache__
 checkpoints/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2/best.pt
@@ -11,3 +12,4 @@ results
 checkpoints
 src/baselines/rsupcon/condaenv.soq1rx4w.requirements.txt
 er_csi.code-workspace
+notebooks/
