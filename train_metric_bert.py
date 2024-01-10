@@ -183,8 +183,8 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
                 val_mAP = val_metrics['mAP']
                 val_mAP_shs = val_metrics_shs['mAP']
 
-                print(f"Val. mAP (yt-yt) at epoch {epoch} and step {step}: {val_mAP}")
-                print(f"Val. mAP (shs-yt) at epoch {epoch} and step {step}: {val_mAP_shs}")
+                print(f"Val. mAP (left-left) at epoch {epoch} and step {step}: {val_mAP}")
+                print(f"Val. mAP (left-right) at epoch {epoch} and step {step}: {val_mAP_shs}")
 
                 if best_val_mAP is None or val_mAP > best_val_mAP:
                     

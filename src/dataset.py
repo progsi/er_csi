@@ -406,9 +406,9 @@ class OnlineCoverSongDataset(Dataset):
         item["video_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
         item["channel_name"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
         item["description"] = self.text_transform(item_yt.description.item()) if not item_yt.description.empty else ''
-        item["keywords"] = [
+        item["keywords"] = item["keywords"] = ' '.join([
                 self.text_transform(keyword) for keyword in item_yt.keywords.item()
-            ] if len(item_yt.keywords) > 0 else []
+            ]) if len(item_yt.keywords) > 0 else ''
         
         item["left_side"] = ' '.join([' '.join(("[COL]", col, "[VAL]", item[col])) for col in self.left_cols])
         item["right_side"] = ' '.join([' '.join(("[COL]", col, "[VAL]", item[col])) for col in self.right_cols])
