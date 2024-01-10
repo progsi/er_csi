@@ -115,15 +115,15 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
         
         for i, batch in tqdm(enumerate(test_loader), desc="Computing embeddings: "):
             
-            embs = model(batch["yt_title"]) 
-            embs_target = model(batch["shs_title"])
+            embs = model(batch["left_side"]) 
+            embs_target = model(batch["right_side"])
             
             emb_all = torch.cat((emb_all, embs))
             emb_all2 = torch.cat((emb_all2, embs_target))
 
-        print("Evaluation YouTube -- YouTube")
+        print("Evaluation left side - left side")
         metrics_dict = ir_eval.eval(target_matrix, emb_all=emb_all)
-        print("Evaluation SHS -- YouTube")
+        print("Evaluation left side - right side")
         metrics_dict2 = ir_eval.eval(target_matrix, emb_all=emb_all, emb_all2=emb_all2)
     return metrics_dict, metrics_dict2
    

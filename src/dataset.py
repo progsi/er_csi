@@ -348,16 +348,6 @@ class TrainingDataset(Dataset):
         return target
     
 
-
-import os
-import random
-import pandas as pd
-import torch
-from torch.utils.data import Dataset
-
-from src.transforms import UnicodeNormalize
-
-
 class OnlineCoverSongDataset(Dataset):
     """This class iterates on sample level:
     one iteration is one video or candidate version
@@ -369,6 +359,7 @@ class OnlineCoverSongDataset(Dataset):
             dataset_name: str, # shs-yt, shs100k2_test, shs100k2_train, ...
             data_path: str, # path with datasets metadata
             metadata_file_path: str, # path to youtube metadata in parquet file
+            task: str, # determines attr pairs
             device: str = "cuda"
         ) -> None:
             
@@ -378,7 +369,9 @@ class OnlineCoverSongDataset(Dataset):
         
         self.data_path = data_path
         self.metadata_file_path = metadata_file_path
-        
+        self.task = task
+        self.left_cols, self.right_cols = self.get_cols_by_task()
+
         # the youtube metadata
         self.metadata = pd.read_parquet(self.metadata_file_path).reset_index()
         # cleanup NoneType keywords
@@ -410,13 +403,16 @@ class OnlineCoverSongDataset(Dataset):
         
         # get youtube metadata 
         item_yt = self.metadata.loc[self.metadata.yt_id == yt_id]
-        item["yt_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
-        item["yt_channel"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
-        item["yt_description"] = self.text_transform(item_yt.description.item()) if not item_yt.description.empty else ''
-        item["yt_keywords"] = [
+        item["video_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
+        item["channel_name"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
+        item["description"] = self.text_transform(item_yt.description.item()) if not item_yt.description.empty else ''
+        item["keywords"] = [
                 self.text_transform(keyword) for keyword in item_yt.keywords.item()
             ] if len(item_yt.keywords) > 0 else []
         
+        item["left_side"] = ' '.join([' '.join(("[COL]", col, "[VAL]", item[col])) for col in self.left_cols])
+        item["right_side"] = ' '.join([' '.join(("[COL]", col, "[VAL]", item[col])) for col in self.right_cols])
+
         return item
     
     def get_target_matrix(self):
@@ -449,22 +445,48 @@ class OnlineCoverSongDataset(Dataset):
         yt_ids = [item['yt_id'] for item in batch]
         shs_titles = [item['title'] for item in batch]
         shs_performers = [item['performer'] for item in batch]
-        yt_titles = [item['yt_title'] for item in batch]
-        yt_channels = [item['yt_channel'] for item in batch]
-        yt_descriptions = [item['yt_description'] for item in batch]
-        yt_keywords = [item['yt_keywords'] for item in batch]
-
+        yt_titles = [item['video_title'] for item in batch]
+        yt_channels = [item['channel_name'] for item in batch]
+        yt_descriptions = [item['description'] for item in batch]
+        yt_keywords = [item['keywords'] for item in batch]
+        left_sides = [item['left_side'] for item in batch]
+        right_sides = [item['right_side'] for item in batch]
 
         return {
             'set_id': torch.tensor(set_ids),
             'set_id_norm': torch.tensor(set_ids_norm),
             'ver_id': torch.tensor(ver_ids),
-            'shs_title': shs_titles,
-            'shs_performer': shs_performers,
+            'title': shs_titles,
+            'performer': shs_performers,
             'yt_id': yt_ids,
-            'yt_title': yt_titles,
-            'yt_channel': yt_channels,
-            'yt_description': yt_descriptions,
-            'yt_keywords': yt_keywords
+            'video_title': yt_titles,
+            'channel_name': yt_channels,
+            'description': yt_descriptions,
+            'keywords': yt_keywords,
+            'left_side': left_sides,
+            'right_side': right_sides
         }
+
+    def get_cols_by_task(self):
+        
+        if self.task == "svShort":
+            right_cols = ["title", "performer"]
+            left_cols = ["video_title", "channel_name"]
+        elif self.task == "svShort+Tags":
+            right_cols = ["title", "performer"]
+            left_cols = ["video_title", "channel_name", "keywords"]
+        elif self.task == "svLong":
+            right_cols = ["title", "performer"]
+            left_cols = ["video_title", "channel_name", "description"]
+        elif self.task == "vvShort":
+            left_cols = ["video_title", "channel_name"]
+            right_cols = left_cols
+        elif self.task == "vvShort+Tags":
+            left_cols = ["video_title", "channel_name", "keywords"]
+            right_cols = left_cols
+        elif self.task == "vvLong":
+            left_cols = ["video_title", "channel_name", "description"]
+            right_cols = left_cols
+        return left_cols, right_cols
+    
         
