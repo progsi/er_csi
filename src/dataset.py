@@ -33,6 +33,9 @@ class TestDataset(Dataset):
         
         self.data_path = data_path
         self.metadata_file_path = metadata_file_path
+
+        self.preds_cqtnet = self.get_csi_pred_matrix("cqtnet")
+        self.preds_coverhunter = self.get_csi_pred_matrix("coverhunter")
         
         # the youtube metadata
         self.metadata = pd.read_parquet(self.metadata_file_path).reset_index()
@@ -95,6 +98,16 @@ class TestDataset(Dataset):
 
         return target
     
+    def get_csi_pred_matrix(self, model_name: str):
+
+        yt_ids = pd.read_csv(
+            os.path.join("preds", model_name, self.dataset_name, "data.csv"), 
+            sep=";").yt_id.to_list()
+        
+        preds = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+        
+        return pd.DataFrame(preds, index=yt_ids, columns=yt_ids)
+    
     def collate_fn(self, batch):
         
         # Filter out None values (rows with missing audio feature)
@@ -144,6 +157,16 @@ class TestDataset(Dataset):
         df = self.get_df().rename({"title_yt": "video_title", "title_shs": "title"}, axis=1)
         return df[left_cols], df[right_cols]
     
+    def getitem_pair_preds(self, idx_left, idx_right):
+
+        yt_id_left = self[idx_left]["yt_id"]
+        yt_id_right = self[idx_right]["yt_id"]
+
+        cq_pred = self.preds_cqtnet.loc[yt_id_left, yt_id_right]
+        ch_pred = self.preds_cqtnet.loc[yt_id_left, yt_id_right]
+
+        return cq_pred, ch_pred
+
     def getitem_tokenized(self, idx, side, task):
         
         item = self[idx]
@@ -207,22 +230,11 @@ class TestDataset(Dataset):
         padded_lists = [lst + [0] * (max_length - len(lst)) for lst in xs]
         x =  torch.tensor(padded_lists)
         
-        #left_zs = [self.tokenizer.encode(text=attrs[0][i], add_special_tokens=True,
-        #                                 truncation="longest_first", max_length=self.max_len)
-        #           for i in range(self.attr_num)]
-        #right_zs = [self.tokenizer.encode(text=attrs[1][i], add_special_tokens=True,
-        #                                  truncation="longest_first", max_length=self.max_len)
-        #            for i in range(self.attr_num)]
-
         masks = [torch.zeros(self.tokenizer.vocab_size, dtype=torch.int)
                  for _ in range(self.attr_num)]
         for i in range(self.attr_num):
             masks[i][xs[i]] = 1
         masks = torch.stack(masks)
-
-        #seqlens = [len(x) for x in xs]
-        #left_zslens = [len(left_z) for left_z in left_zs]
-        #right_zslens = [len(right_z) for right_z in right_zs]
 
         return sent, x.unsqueeze(0), label, masks.unsqueeze(0), attrs
       
@@ -346,6 +358,8 @@ class TrainingDataset(Dataset):
         target[mask] = (labels[:, None] == labels).int()[mask]
 
         return target
+    
+
     
 
 class OnlineCoverSongDataset(Dataset):
@@ -477,6 +491,15 @@ class OnlineCoverSongDataset(Dataset):
             left_cols = ["video_title", "channel_name", "keywords"]
         elif self.task == "svLong":
             right_cols = ["title", "performer"]
+            left_cols = ["video_title", "channel_name", "description"]
+        elif self.task == "tvShort":
+            right_cols = ["title"]
+            left_cols = ["video_title", "channel_name"]
+        elif self.task == "tvShort+Tags":
+            right_cols = ["title"]
+            left_cols = ["video_title", "channel_name", "keywords"]
+        elif self.task == "tvLong":
+            right_cols = ["title"]
             left_cols = ["video_title", "channel_name", "description"]
         elif self.task == "vvShort":
             left_cols = ["video_title", "channel_name"]

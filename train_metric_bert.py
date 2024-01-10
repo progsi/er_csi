@@ -215,7 +215,8 @@ if __name__ == "__main__":
                         choices=["shs100k2_val500", "shs100k2_val", "shs-yt", "shs100k2_test"], 
                         help="Test Dataset name")
     parser.add_argument("--task", type=str, default="svShort",
-                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong"])
+                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", 
+                                 "svLong", "vvLong", "tvShort", "tvShort+Tags", "tvLong"])
     parser.add_argument("--mining_strategy", type=str, default="hard", 
                         choices=["hard", "semihard"], 
                         help="Triplet Mining Strategy")

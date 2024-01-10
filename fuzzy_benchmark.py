@@ -129,7 +129,7 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix:
     
     stemmer = SnowballStemmer(language="english")
     
-    recall = BinaryRecall(threshold=0.5).to(device)
+    recall = BinaryRecall(threshold=0.4).to(device)
     mAP = RetrievalMAP(empty_target_action="skip").to(device)
     nDCG = RetrievalNormalizedDCG(empty_target_action="skip").to(device)
 
@@ -141,13 +141,14 @@ def benchmark_fuzzy_attributes(dataset: torch.utils.data.Dataset, target_matrix:
             try:
                 print(f"\nScoring {eval_type}")
                 processor = stemmer.stem if stemming else None
-                prediction_matrix =  torch.tensor(process.cdist(shs_side, yt_side, scorer=scorer, 
+                prediction_matrix =  torch.tensor(process.cdist(shs_side, yt_side, scorer=eval(scorer), 
                                                   workers=64, processor=processor))
                 if torch.max(prediction_matrix) > 1:
                     prediction_matrix = (prediction_matrix - prediction_matrix.min()) / (prediction_matrix.max() - prediction_matrix.min())
 
-            except:
-                print(f"Skipped {eval_type}")
+            except Exception as e:
+                print(f"Caught an exception: {e} at {eval_type}")
+                print(f"Type of error: {type(e).__name__}") 
                 continue
         
             test_time = time.monotonic() - start_time
