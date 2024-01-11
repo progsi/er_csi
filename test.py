@@ -19,15 +19,15 @@ from transformers import AutoTokenizer, AutoConfig
 
 def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
          device: str, ir_eval: RetrievalEvaluation, itemwise_embeddings: bool, 
-         blocker: Blocker, task: str, print_all=False):
+         blocker: Blocker, task: str, with_audio: bool, print_all=False):
     
     start_time = time.monotonic()
 
     # compute metrics
     if itemwise_embeddings:
-        metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device)
+        metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
     else:
-        metrics_dict, _ = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device)            
+        metrics_dict, _ = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device, with_audio)            
         
     test_time = time.monotonic() - start_time
         
@@ -43,7 +43,7 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
 
 def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker, 
                           dataset: torch.utils.data.Dataset, task: str,
-                            ir_eval: RetrievalEvaluation, device: str):
+                            ir_eval: RetrievalEvaluation, device: str, with_audio: bool):
     """Embeddings on pair level (slow!), thus with blocking recommended.
     """
     model.eval()
@@ -102,17 +102,21 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         else:
             audio_preds = None
             eval_type = "text_only"
-        
+
         print(eval_type)
         metrics_dict = ir_eval.eval(target_matrix, preds_text=preds, preds_audio=audio_preds)
 
         results[eval_type] = metrics_dict
+
+        if not with_audio:
+            break
+        
     
     return results, _
            
                     
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
-                            ir_eval: RetrievalEvaluation, device: str ):
+                            ir_eval: RetrievalEvaluation, device: str, with_audio: bool):
     """Embeddings on item level (fast!)
     """
     model.eval()
@@ -150,14 +154,17 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
 
             print(eval_type)
             print("Evaluation left side - left side")
-            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all_text=emb_all, audio_preds=audio_preds)
+            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all_text=emb_all, preds_audio=audio_preds)
             print(f"mAP: {metrics_dict_sym['mAP']}")
             print("Evaluation left side - right side")
-            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all_text=emb_all, emb_all2_text=emb_all2, audio_preds=audio_preds)
+            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all_text=emb_all, emb_all2_text=emb_all2, preds_audio=audio_preds)
             print(f"mAP: {metrics_dict_asym['mAP']}")
 
             results_sym[eval_type] = metrics_dict_sym
             results_asym[eval_type] = metrics_dict_asym
+
+            if not with_audio:
+                break
             
         return results_sym, results_asym
    
@@ -224,7 +231,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     
     itemwise_embeddings = model_name == "sentence-transformer"
     
-    test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task)
+    test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
 
         
 if __name__ == "__main__":

@@ -356,8 +356,6 @@ class TrainingDataset(Dataset):
         return target
     
 
-    
-
 class OnlineCoverSongDataset(Dataset):
     """This class iterates on sample level:
     one iteration is one video or candidate version
@@ -442,6 +440,26 @@ class OnlineCoverSongDataset(Dataset):
         target[mask] = (labels[:, None] == labels).int()[mask]
 
         return target
+    
+
+    def get_csi_pred_matrix(self, model_name: str):
+
+        preds_yt_ids = pd.read_csv(
+            os.path.join("preds", model_name, self.dataset_name, "data.csv"), 
+            sep=";").yt_id.to_list()
+        
+        preds_tensor = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+
+        preds = pd.merge(
+            self.data[["yt_id"]], 
+            pd.DataFrame(
+                preds_tensor, 
+                index=preds_yt_ids, 
+                columns=preds_yt_ids).reset_index(names="yt_id").drop_duplicates(subset="yt_id"),
+            how="left").set_index("yt_id")
+        preds = preds.reindex(index=preds.index, columns=preds.index)
+        
+        return torch.tensor(preds.values)
     
     def collate_fn(self, batch):
         

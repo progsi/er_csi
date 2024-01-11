@@ -178,7 +178,7 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
             
             if step % val_every == 0:
 
-                val_metrics, val_metrics_shs = test(model, dataset_val, config.device, ir_eval, True, None, task)
+                val_metrics, val_metrics_shs = test(model, dataset_val, config.device, ir_eval, True, None, task, False)
 
                 val_mAP = val_metrics["text_only"]['mAP']
                 val_mAP_shs = val_metrics_shs["text_only"]['mAP']
