@@ -180,8 +180,8 @@ def train(config_file: str, model_name: str, train_dataset_name: str,
 
                 val_metrics, val_metrics_shs = test(model, dataset_val, config.device, ir_eval, True, None, task)
 
-                val_mAP = val_metrics['mAP']
-                val_mAP_shs = val_metrics_shs['mAP']
+                val_mAP = val_metrics["text_only"]['mAP']
+                val_mAP_shs = val_metrics_shs["text_only"]['mAP']
 
                 print(f"Val. mAP (left-left) at epoch {epoch} and step {step}: {val_mAP}")
                 print(f"Val. mAP (left-right) at epoch {epoch} and step {step}: {val_mAP_shs}")

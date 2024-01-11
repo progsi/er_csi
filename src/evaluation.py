@@ -40,7 +40,7 @@ class RetrievalEvaluation(object):
             preds.fill_diagonal_(self.fill_diagonal_value)
         return preds
 
-    def eval(self, target, preds=None, emb_all=None, emb_all2=None):
+    def eval(self, target, preds_text=None, emb_all_text=None, emb_all2_text=None, preds_audio=None, weight_audio=0.5):
         """Compute all the matrix based on the embeddings of the dataset and the target.
         Args:
             emb_all (_type_): N embeddings
@@ -49,9 +49,14 @@ class RetrievalEvaluation(object):
             dict: result dict with metric names mapping to values
         """
         # N x N matrix
-        if preds == None:
-            preds = self.pairwise_cosine_similarities(emb_all, emb_all2)
-        
+        if preds_text == None:
+            preds_text = self.pairwise_cosine_similarities(emb_all_text, emb_all2_text)
+        if preds_audio != None:
+            # linear combination of preds
+            preds = weight_audio * preds_audio + (1 - weight_audio) * preds_text
+        else:
+            preds = preds_text
+
         return self.compute_metrics(preds, target)
     
     def compute_metrics(self, preds, target, cls_based=False):

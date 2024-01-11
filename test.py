@@ -59,9 +59,7 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     pred_indices = torch.nonzero(blocking_mask.triu(1))
     
     preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
-    cq_preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
-    ch_preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
-
+ 
     # iterating square matrix
     for i, j in tqdm(pred_indices, desc="Generating pairs embeddings..."):
         
@@ -73,7 +71,6 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
             input_ids_right, attention_mask_right = dataset.getitem_tokenized(j, "right", task)
             
             labels = target_matrix[i,j].unsqueeze(0)
-            cq_pred, ch_pred = dataset.getitem_pair_preds(i, j)
 
             (loss, pred) = model.forward(input_ids, attention_mask, labels, input_ids_right, attention_mask_right)
             
@@ -82,7 +79,6 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
             input_ids, labels = dataset.getitem_pair_tokenized(i, j, task)
             logits = model(input_ids)
             pred = logits.softmax(dim=1)[:, 1]
-            cq_pred, ch_pred = dataset.getitem_pair_preds(i, j)
 
         elif model_name == 'TranHGAT':
             
@@ -91,22 +87,28 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
             logits, y1, y_hat = model(x, y, masks)
             logits = logits.view(-1, logits.shape[-1])
             pred = y_hat.view(-1)
-            cq_pred, ch_pred = dataset.getitem_pair_preds(i, j)
         
         preds[i,j] = pred.item()
         preds[j,i] = pred.item()
-
-        cq_preds[i,j] = cq_pred.item()
-        cq_preds[j,i] = cq_pred.item()
-
-        ch_preds[i,j] = ch_pred.item()
-        ch_preds[j,i] = ch_pred.item()
         
     print(f"Evaluation task {task}")
-    metrics_dict = ir_eval.eval(target_matrix, preds=preds)
-    metrics_dict_cq = ir_eval.eval(target_matrix, preds=(preds+cq_preds)/2)
-    metrics_dict_ch = ir_eval.eval(target_matrix, preds=(preds+ch_preds)/2)
-    return metrics_dict, _
+
+    results = {}
+    for audio_model in [None, "cqtnet", "coverhunter"]:
+    
+        if audio_model is not None:
+            audio_preds = dataset.get_csi_pred_matrix(audio_model) 
+            eval_type = audio_model
+        else:
+            audio_preds = None
+            eval_type = "text_only"
+        
+        print(eval_type)
+        metrics_dict = ir_eval.eval(target_matrix, preds_text=preds, preds_audio=audio_preds)
+
+        results[eval_type] = metrics_dict
+    
+    return results, _
            
                     
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
@@ -134,20 +136,30 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
             
             emb_all = torch.cat((emb_all, embs))
             emb_all2 = torch.cat((emb_all2, embs_target))
-        
-        cq_preds = dataset.preds_cqtnet
-        cq_preds = cq_preds.loc[yt_id, yt_id]
-        
-        ch_preds = dataset.preds_coverhunter
-        ch_preds = ch_preds.loc[yt_id, yt_id]
 
-        print("Evaluation left side - left side")
-        metrics_dict = ir_eval.eval(target_matrix, emb_all=emb_all)
-        print("Evaluation left side - right side")
-        metrics_dict2 = ir_eval.eval(target_matrix, emb_all=emb_all, emb_all2=emb_all2)
-   
-   
-    return metrics_dict, metrics_dict2
+        results_sym, results_asym = {}, {}
+
+        for audio_model in [None, "cqtnet", "coverhunter"]:
+            
+            if audio_model is not None:
+                audio_preds = dataset.get_csi_pred_matrix(audio_model) 
+                eval_type = audio_model
+            else:
+                audio_preds = None
+                eval_type = "text_only"
+
+            print(eval_type)
+            print("Evaluation left side - left side")
+            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all_text=emb_all, audio_preds=audio_preds)
+            print(f"mAP: {metrics_dict_sym['mAP']}")
+            print("Evaluation left side - right side")
+            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all_text=emb_all, emb_all2_text=emb_all2, audio_preds=audio_preds)
+            print(f"mAP: {metrics_dict_asym['mAP']}")
+
+            results_sym[eval_type] = metrics_dict_sym
+            results_asym[eval_type] = metrics_dict_asym
+            
+        return results_sym, results_asym
    
     
 def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str):

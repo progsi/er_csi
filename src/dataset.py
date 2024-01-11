@@ -33,9 +33,6 @@ class TestDataset(Dataset):
         
         self.data_path = data_path
         self.metadata_file_path = metadata_file_path
-
-        self.preds_cqtnet = self.get_csi_pred_matrix("cqtnet")
-        self.preds_coverhunter = self.get_csi_pred_matrix("coverhunter")
         
         # the youtube metadata
         self.metadata = pd.read_parquet(self.metadata_file_path).reset_index()
@@ -100,13 +97,22 @@ class TestDataset(Dataset):
     
     def get_csi_pred_matrix(self, model_name: str):
 
-        yt_ids = pd.read_csv(
+        preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, self.dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
-        preds = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+        preds_tensor = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+
+        preds = pd.merge(
+            self.data[["yt_id"]], 
+            pd.DataFrame(
+                preds_tensor, 
+                index=preds_yt_ids, 
+                columns=preds_yt_ids).reset_index(names="yt_id").drop_duplicates(subset="yt_id"),
+            how="left").set_index("yt_id")
+        preds = preds.reindex(index=preds.index, columns=preds.index)
         
-        return pd.DataFrame(preds, index=yt_ids, columns=yt_ids)
+        return torch.tensor(preds.values)
     
     def collate_fn(self, batch):
         
@@ -156,16 +162,6 @@ class TestDataset(Dataset):
         left_cols, right_cols = self.__get_cols_by_task(task)
         df = self.get_df().rename({"title_yt": "video_title", "title_shs": "title"}, axis=1)
         return df[left_cols], df[right_cols]
-    
-    def getitem_pair_preds(self, idx_left, idx_right):
-
-        yt_id_left = self[idx_left]["yt_id"]
-        yt_id_right = self[idx_right]["yt_id"]
-
-        cq_pred = self.preds_cqtnet.loc[yt_id_left, yt_id_right]
-        ch_pred = self.preds_cqtnet.loc[yt_id_left, yt_id_right]
-
-        return cq_pred, ch_pred
 
     def getitem_tokenized(self, idx, side, task):
         
