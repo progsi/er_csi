@@ -9,7 +9,8 @@ from src.baselines.rsupcon.model import ContrastiveClassifierModel
 from src.baselines.ditto.model import DittoModel
 from src.baselines.hiergat.model import TranHGAT
 from src.baselines.blocking import Blocker
-from src.dataset import TestDataset
+from src.baselines.sentence_transformers.model import SBert
+from src.dataset import TestDataset, OnlineCoverSongDataset
 from src.evaluation import RetrievalEvaluation
 import json
 from rapidfuzz import fuzz, process, distance
@@ -55,11 +56,16 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     target_matrix = dataset.get_target_matrix().to(device)
     
     # get indices to predict on
-    blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
-    pred_indices = torch.nonzero(blocking_mask.triu(1))
-    
-    preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
- 
+    if blocker is not None:
+        blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
+        pred_indices = torch.nonzero(blocking_mask.triu(1))
+
+        preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
+
+    else:
+        preds = torch.ones_like(target_matrix).to(dtype=torch.float32)
+        pred_indices = torch.nonzero(preds.triu(1))
+
     # iterating square matrix
     for i, j in tqdm(pred_indices, desc="Generating pairs embeddings..."):
         
@@ -95,23 +101,30 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
 
     results = {}
     for audio_model in [None, "cqtnet", "coverhunter"]:
-    
+        
+        print("\n")
+
         if audio_model is not None:
             audio_preds = dataset.get_csi_pred_matrix(audio_model) 
-            eval_type = audio_model
+            eval_type = audio_model + "+text"
+
+            print(f"audio_only: {audio_model}")
+            metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
+            print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, P@10: {metrics_dict_audio['P@10']}")
+           
         else:
             audio_preds = None
             eval_type = "text_only"
 
         print(eval_type)
-        metrics_dict = ir_eval.eval(target_matrix, preds_text=preds, preds_audio=audio_preds)
+        metrics_dict = ir_eval.eval(target_matrix, preds1=preds, preds2=audio_preds)
 
         results[eval_type] = metrics_dict
+        print(f"mAP: {metrics_dict['mAP']}, MR1: {metrics_dict['MR1']}, P@10: {metrics_dict['P@10']}")
 
         if not with_audio:
             break
         
-    
     return results, _
            
                     
@@ -147,18 +160,24 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
             
             if audio_model is not None:
                 audio_preds = dataset.get_csi_pred_matrix(audio_model) 
-                eval_type = audio_model
+                eval_type = "text+" + audio_model
+                print(f"audio_only: {audio_model}")
+             
+                metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
+                print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, P@10: {metrics_dict_audio['P@10']}")
+            
             else:
                 audio_preds = None
                 eval_type = "text_only"
 
             print(eval_type)
+           
             print("Evaluation left side - left side")
-            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all_text=emb_all, preds_audio=audio_preds)
-            print(f"mAP: {metrics_dict_sym['mAP']}")
+            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all1=emb_all, preds2=audio_preds)
+            print(f"mAP: {metrics_dict_sym['mAP']}, MR1: {metrics_dict_sym['MR1']}, P@10: {metrics_dict_sym['P@10']}")
             print("Evaluation left side - right side")
-            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all_text=emb_all, emb_all2_text=emb_all2, preds_audio=audio_preds)
-            print(f"mAP: {metrics_dict_asym['mAP']}")
+            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all1=emb_all, emb_all2=emb_all2, preds2=audio_preds)
+            print(f"mAP: {metrics_dict_asym['mAP']}, MR1: {metrics_dict_asym['MR1']}, P@10: {metrics_dict_asym['P@10']}")
 
             results_sym[eval_type] = metrics_dict_sym
             results_asym[eval_type] = metrics_dict_asym
@@ -169,7 +188,7 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
         return results_sym, results_asym
    
     
-def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str):
+def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -181,14 +200,49 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     checkpoint_dir = os.path.join("checkpoints", model_name, tokenizer_name, task)
     if model_name == "rsupcon":
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, additional_special_tokens=('[COL]', '[VAL]'))
+    elif model_name == "sentence-transformers":
+        tokenizer = AutoTokenizer.from_pretrained('/'.join((model_name, tokenizer_name)))
     else:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         
     
-    if blocking_func is not None:
-        blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.4)
+    if model_name != "sentence-transformers":
+        
+        if model_name == "hiergat":
+            split = True # FIXME: this should go to a yaml config file
+            if split:
+                attr_num = 3 if "Long" in task or "+Tags" in task else 2
+            else:
+                attr_num = 1
+        else:
+            attr_num = None
+
+        dataset = TestDataset(
+        dataset_name,
+        config_data["data_path"],
+        config_data["yt_metadata_file"],
+        tokenizer=tokenizer,
+        attr_num=attr_num,
+        nsample=nsample
+        )
+
+        if nsample is None and blocking_func is not None:
+            blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.2) # for > 0.95 recall (empirical)
+        else:
+            blocker = None
+    else:
+
+        # init validation iterator
+        dataset = OnlineCoverSongDataset(
+            dataset_name,
+            config_data["data_path"],
+            config_data["yt_metadata_file"],
+            task
+        )  
+
+        blocker = None
+
     if model_name == 'rsupcon':
-        attr_num = None
         model = ContrastiveClassifierModel(
             model=tokenizer_name,
             len_tokenizer=len(tokenizer), 
@@ -199,39 +253,44 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         attr_num = None
         model = DittoModel(device=device)
         checkpoint = checkpoint_dir + os.sep + "model.pt"
-        if os.path.isfile(checkpoint):
-            saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
-            model.load_state_dict(saved_state['model'])
+
+        saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+        model.load_state_dict(saved_state['model'])
+
         model.cuda()
     elif model_name == 'hiergat':
-        split = True # FIXME: this should go to a yaml config file
-        if split:
-            attr_num = 3 if "Long" in task or "+Tags" in task else 2
-        else:
-            attr_num = 1
+
         model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
         checkpoint = checkpoint_dir + os.sep + "model.pt"
-        if os.path.isfile(checkpoint):
-            saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
-            model.load_state_dict(saved_state)
+        saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
+        model.load_state_dict(saved_state)
+        model.cuda()
+    elif model_name == "sentence-transformers":
+        blocker, attr_num = None, None
+        model = SBert('/'.join((model_name, tokenizer_name)), pooling='mean') 
+        checkpoint = checkpoint_dir + os.sep + "model.pt"
+        saved_state = torch.load(checkpoint)
+        model.load_state_dict(saved_state["model"])
         model.cuda()
     else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
         
     model.to(device)
+    
+    itemwise_embeddings = model_name == "sentence-transformers"
+    
+    results1, results2 = test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
+    
+    results_path = os.path.join("results", dataset_name, tokenizer_name, model_name, task)
+    os.makedirs(results_path, exist_ok=True)
 
-    dataset = TestDataset(
-    dataset_name,
-    config_data["data_path"],
-    config_data["yt_metadata_file"],
-    tokenizer=tokenizer,
-    attr_num=attr_num
-    )
+    with open(results_path + os.sep + "sym.json", "w") as f:
+        json.dump(results1, f, indent=4)
     
-    itemwise_embeddings = model_name == "sentence-transformer"
-    
-    test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
+    if results2 is not None:
+        with open(results_path + os.sep + "asym.json", "w") as f:
+            json.dump(results2, f, indent=4)
 
         
 if __name__ == "__main__":
@@ -240,18 +299,18 @@ if __name__ == "__main__":
                         choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
-    parser.add_argument("--blocking_func", type=str, default="distance.JaroWinkler.normalized_similarity")
+    parser.add_argument("--blocking_func", type=str, default="fuzz.token_set_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
     parser.add_argument("--task", type=str, default="svShort", 
-                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong"])
-
+                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong", "tvShort", "tvLong", "tvShort+Tags"])
+    parser.add_argument("--nsample",  type=int, default=None)
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
     
-    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task)    
+    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample)    
     
         
         

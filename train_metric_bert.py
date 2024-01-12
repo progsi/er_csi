@@ -11,6 +11,7 @@ from torch.nn import MultiLabelSoftMarginLoss
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
+from src.baselines.sentence_transformers.model import SBert
 from src.dataset import OnlineCoverSongDataset
 from src.utils import Config
 from src.evaluation import RetrievalEvaluation
@@ -21,7 +22,7 @@ import wandb
 
 
 MODELS = [
-    "sentence-transformers/distiluse-base-multilingual-cased-v2", 
+    "sentence-transformers/all-mpnet-base-v2", 
     "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" # dim. 384, 50 languages
           ]
@@ -34,38 +35,7 @@ LOSSES = {
 }
 
 # FIXME: Ideas for better performance:
-# - SCALE DOWN ARCFACE SCALE PARAM
-# - hier ganz unten bzgl. Learning Rate: https://github.com/KevinMusgrave/pytorch-metric-learning/issues/534
-
-class SBert(nn.Module):
-    def __init__(self, base_name, pooling='max', device='cuda', add_tokens=["[COL]", "[VAL]"]):
-        super(SBert, self).__init__()
-        self.base_name = base_name    
-        self.device = device
-
-        self.tokenizer = AutoTokenizer.from_pretrained(self.base_name)
-        self.tokenizer.add_tokens(add_tokens, special_tokens=True)
-
-        self.model = AutoModel.from_pretrained(self.base_name)
-        self.pooling = self.__max_pooling if pooling == 'max' else self.__mean_pooling
-        
-    def forward(self, sentences):
-        encoded_input = self.tokenizer(sentences, padding=True, truncation=True, max_length=128, return_tensors='pt')
-        model_output = self.model(**encoded_input.to(self.device))
-        pooled_output = self.pooling(model_output, encoded_input['attention_mask'])
-        return pooled_output
-        
-    def __max_pooling(self, model_output, attention_mask):
-        token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        token_embeddings[input_mask_expanded == 0] = -1e9  # Set padding tokens to large negative value
-        return torch.max(token_embeddings, 1)[0]
-    
-    def __mean_pooling(self, model_output, attention_mask):
-        token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-    
+# - hier ganz unten bzgl. Learning Rate: https://github.com/KevinMusgrave/pytorch-metric-learning/issues/534  
       
 
 def train(config_file: str, model_name: str, train_dataset_name: str, 

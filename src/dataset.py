@@ -22,7 +22,8 @@ class TestDataset(Dataset):
             tokenizer: AutoTokenizer,
             device: str = "cuda",
             attr_num: str = None,
-            max_len: int = 256
+            max_len: int = 256,
+            nsample: int = None
         ) -> None:
             
         super().__init__()
@@ -43,6 +44,9 @@ class TestDataset(Dataset):
         self.data = pd.read_csv(
             os.path.join(self.data_path, dataset_name + '.csv'), sep=";")
         self.data = self.data.query("has_file")
+        if nsample is not None:
+            self.data = self.data.sample(n=nsample)
+            
         if "nlabel" not in self.data.columns:
             """If no nlabel is specified (as in datasets SHS100K, Da-Tacos, etc.)
             then we assign a column with 2s indicating that are items are versions.
@@ -112,7 +116,7 @@ class TestDataset(Dataset):
             how="left").set_index("yt_id")
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
-        return torch.tensor(preds.values)
+        return torch.tensor(preds.values).to(self.device)
     
     def collate_fn(self, batch):
         
@@ -459,7 +463,7 @@ class OnlineCoverSongDataset(Dataset):
             how="left").set_index("yt_id")
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
-        return torch.tensor(preds.values)
+        return torch.tensor(preds.values).to(self.device)
     
     def collate_fn(self, batch):
         
