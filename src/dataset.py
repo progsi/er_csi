@@ -114,6 +114,8 @@ class TestDataset(Dataset):
                 index=preds_yt_ids, 
                 columns=preds_yt_ids).reset_index(names="yt_id").drop_duplicates(subset="yt_id"),
             how="left").set_index("yt_id")
+        if len(preds.columns) > len(preds):
+            preds = preds[preds.index]
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
         return torch.tensor(preds.values).to(self.device)

@@ -11,6 +11,7 @@ class TranHGAT(nn.Module):
 
         # load the model or model checkpoint
         self.lm = lm
+        self.attr_num = attr_num
             
         if lm == 'bert-base-uncased':
             from transformers import BertModel

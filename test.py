@@ -28,7 +28,7 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     if itemwise_embeddings:
         metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
     else:
-        metrics_dict, _ = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device, with_audio)            
+        metrics_dict, metrics_dict2 = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device, with_audio)            
         
     test_time = time.monotonic() - start_time
         
@@ -89,7 +89,7 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         elif model_name == 'TranHGAT':
             
             _, x, y, masks, _ = dataset.getitem_hiergat(
-                i, j, task, True ) # FIXME: split param is fixed!
+                i, j, task, split = model.attr_num > 1 ) # FIXME: split param is fixed!
             logits, y1, y_hat = model(x, y, masks)
             logits = logits.view(-1, logits.shape[-1])
             pred = y_hat.view(-1)
@@ -208,12 +208,10 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     
     if model_name != "sentence-transformers":
         
-        if model_name == "hiergat":
-            split = True # FIXME: this should go to a yaml config file
-            if split:
-                attr_num = 3 if "Long" in task or "+Tags" in task else 2
-            else:
-                attr_num = 1
+        if model_name == "hiergat_split":
+            attr_num = 3 if "Long" in task or "+Tags" in task else 2
+        elif model_name == "hiergat_nosplit":
+            attr_num = 1
         else:
             attr_num = None
 
@@ -258,12 +256,15 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         model.load_state_dict(saved_state['model'])
 
         model.cuda()
-    elif model_name == 'hiergat':
-
-        model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
-        checkpoint = checkpoint_dir + os.sep + "model.pt"
+    elif 'hiergat' in model_name:
+        checkpoint = os.path.join("checkpoints", "hiergat", tokenizer_name, task) + os.sep + "model.pt"
         saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
-        model.load_state_dict(saved_state)
+        if model_name == "hiergat_split":
+            model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
+            model.load_state_dict(saved_state)
+        else:
+            model = TranHGAT(attr_num=1, lm=tokenizer_name, device=device)
+            model.load_state_dict(saved_state)
         model.cuda()
     elif model_name == "sentence-transformers":
         blocker, attr_num = None, None
@@ -295,17 +296,17 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--model_name", type=str, default="hiergat", 
-                        choices=["ditto", "hiergat", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
+    parser.add_argument("--model_name", type=str, default="hiergat_nosplit", 
+                        choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
     parser.add_argument("--blocking_func", type=str, default="fuzz.token_set_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
-    parser.add_argument("--task", type=str, default="svShort", 
+    parser.add_argument("--task", type=str, default="svLong", 
                         choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong", "tvShort", "tvLong", "tvShort+Tags"])
-    parser.add_argument("--nsample",  type=int, default=None)
+    parser.add_argument("--nsample",  type=int, default=30)
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
