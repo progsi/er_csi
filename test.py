@@ -63,8 +63,10 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
 
     else:
-        preds = torch.ones_like(target_matrix).to(dtype=torch.float32)
-        pred_indices = torch.nonzero(preds.triu(1))
+        preds = torch.zeros_like(target_matrix).to(dtype=torch.float32)
+        rows, cols = preds.size()
+        i_indices, j_indices = torch.meshgrid(torch.arange(rows), torch.arange(cols))
+        pred_indices = torch.stack((i_indices, j_indices), dim=-1).reshape(-1, 2)
 
     # iterating square matrix
     for i, j in tqdm(pred_indices, desc="Generating pairs embeddings..."):
@@ -296,7 +298,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--model_name", type=str, default="hiergat_nosplit", 
+    parser.add_argument("--model_name", type=str, default="ditto", # default="hiergat_nosplit", 
                         choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])

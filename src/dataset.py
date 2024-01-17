@@ -45,7 +45,7 @@ class TestDataset(Dataset):
             os.path.join(self.data_path, dataset_name + '.csv'), sep=";")
         self.data = self.data.query("has_file")
         if nsample is not None:
-            self.data = self.data.sample(n=nsample)
+            self.data = self.data.tail(nsample)
             
         if "nlabel" not in self.data.columns:
             """If no nlabel is specified (as in datasets SHS100K, Da-Tacos, etc.)
