@@ -38,7 +38,7 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
                         suffixes=["_left", "_right"]
             )
                 dataset["title_right"] = '[MASK]'
-                dataset["title_left"] = '[MASK]'
+                dataset["performer_right"] = '[MASK]'
 
             elif mode == "sv":
                 dataset = pd.merge(
