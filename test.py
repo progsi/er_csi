@@ -127,7 +127,7 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         if not with_audio:
             break
         
-    return results, _
+    return results, None
            
                     
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
@@ -308,7 +308,7 @@ if __name__ == "__main__":
                         help="Dataset name")
     parser.add_argument("--task", type=str, default="svLong", 
                         choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong", "tvShort", "tvLong", "tvShort+Tags"])
-    parser.add_argument("--nsample",  type=int, default=30)
+    parser.add_argument("--nsample",  type=int, default=None)
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"

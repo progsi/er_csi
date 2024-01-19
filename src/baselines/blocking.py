@@ -15,9 +15,9 @@ class Blocker(object):
         right_data = right_df.apply(lambda row: ' '.join(map(str, row)), axis=1)
         
         y = process.cdist(left_data, right_data, scorer=self.blocking_func, 
-                                                  workers=self.workers)
+                                                workers=self.workers)
         return torch.tensor(y).to(self.device)
-        
+            
     def block(self, left_df, right_df):
         
         y = self.predict(left_df, right_df)

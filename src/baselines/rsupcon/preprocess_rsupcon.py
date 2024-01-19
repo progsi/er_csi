@@ -194,7 +194,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input_file", type=str, default="/data/csi_datasets/shs100k2_yt.parquet",
                         help="path to parquet source file")
-    parser.add_argument("--output_dir", type=str, default="/home/repos/contrastive-product-matching/data/raw/shs100k",
+    parser.add_argument("--output_dir", type=str, default="datasets/", #default="/home/repos/contrastive-product-matching/data/raw/shs100k",
                         help="path to parquet source file")
     args = parser.parse_args()
     main(args.input_file, args.output_dir)
