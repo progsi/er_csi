@@ -146,12 +146,19 @@ class TestDataset(Dataset):
             'ver_id': torch.tensor(ver_ids)        
             }
         
-    def serialize_item(self, item, cols):    
+    def serialize_item(self, item, cols, mask_shs):    
         
         COL_TOKEN = "[COL]"
         VAL_TOKEN = "[VAL]"
                 
         tuple_list = [(COL_TOKEN, col, VAL_TOKEN, item[col]) for col in cols]
+        # mask shs info
+        if mask_shs:
+            for i, (col_tok, col, val_tok, val) in enumerate(tuple_list):
+                if col_tok in ["performer", "title"]:
+                    val_masked = "[MASK]"
+                tuple_list[i] = (col_tok, col, val_tok, val_masked)
+
         side_tokenized = ' '.join([' '.join(t) for t in tuple_list])
         return side_tokenized
 
@@ -191,7 +198,10 @@ class TestDataset(Dataset):
         left_cols, right_cols = self.__get_cols_by_task(task)
         
         serialized_text_left = self.serialize_item(item_left, left_cols)
-        serialized_text_right = self.serialize_item(item_right, right_cols)
+        if  "rLong" in task or "rShort" in task:
+            serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=True)
+        else:    
+            serialized_text_right = self.serialize_item(item_right, right_cols)
 
         tokenized = self.tokenizer.encode(text=serialized_text_left,
                                   text_pair=serialized_text_right,
@@ -259,6 +269,12 @@ class TestDataset(Dataset):
             right_cols = left_cols
         elif task == "vvLong":
             left_cols = ["video_title", "channel_name", "description"]
+            right_cols = left_cols
+        elif task == "rShort":
+            left_cols = ["title", "performer", "video_title", "channel_name"]
+            right_cols = left_cols
+        elif task == "rLong":
+            left_cols = ["title", "performer", "video_title", "channel_name", "description"]
             right_cols = left_cols
         return left_cols, right_cols
         

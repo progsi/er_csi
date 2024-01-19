@@ -211,7 +211,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     if model_name != "sentence-transformers":
         
         if model_name == "hiergat_split":
-            attr_num = 3 if "Long" in task or "+Tags" in task else 2
+            attr_num = 3 if "Long" in task or "+Tags" in task or "rLong" in task or "rShort" in task else 2
         elif model_name == "hiergat_nosplit":
             attr_num = 1
         else:
