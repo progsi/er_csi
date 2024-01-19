@@ -65,9 +65,9 @@ def main(dataset_path, repo_dir):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_path", type=str, default="/home/repos/contrastive-product-matching/data/interim/shs100k_1000",
+    parser.add_argument("--dataset_path", type=str, default="/data/repos/contrastive-product-matching/data/interim/shs100k_1000",
                         help="path to json lines source file")
-    parser.add_argument("--repo_dir", type=str, default="/home/repos",
+    parser.add_argument("--repo_dir", type=str, default="/data/repos",
                         help="path to parquet source file")
     args = parser.parse_args()
     main(args.dataset_path, args.repo_dir)
