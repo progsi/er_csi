@@ -102,7 +102,7 @@ class TestDataset(Dataset):
     def get_csi_pred_matrix(self, model_name: str):
         
 
-        dataset_name = self.dataset_nameself.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
+        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
                                  
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
