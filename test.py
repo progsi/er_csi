@@ -67,6 +67,7 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         rows, cols = preds.size()
         i_indices, j_indices = torch.meshgrid(torch.arange(rows), torch.arange(cols))
         pred_indices = torch.stack((i_indices, j_indices), dim=-1).reshape(-1, 2)
+        pred_indices = pred_indices[pred_indices[:, 0] <= pred_indices[:, 1]]
 
     # iterating square matrix
     for i, j in tqdm(pred_indices, desc="Generating pairs embeddings..."):
