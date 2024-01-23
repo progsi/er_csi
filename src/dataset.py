@@ -100,9 +100,12 @@ class TestDataset(Dataset):
         return target
     
     def get_csi_pred_matrix(self, model_name: str):
+        
 
+        dataset_name = self.dataset_nameself.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
+                                 
         preds_yt_ids = pd.read_csv(
-            os.path.join("preds", model_name, self.dataset_name, "data.csv"), 
+            os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
         preds_tensor = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
@@ -146,7 +149,7 @@ class TestDataset(Dataset):
             'ver_id': torch.tensor(ver_ids)        
             }
         
-    def serialize_item(self, item, cols, mask_shs):    
+    def serialize_item(self, item, cols, mask_shs=False):    
         
         COL_TOKEN = "[COL]"
         VAL_TOKEN = "[VAL]"
@@ -156,8 +159,8 @@ class TestDataset(Dataset):
         if mask_shs:
             for i, (col_tok, col, val_tok, val) in enumerate(tuple_list):
                 if col_tok in ["performer", "title"]:
-                    val_masked = "[MASK]"
-                tuple_list[i] = (col_tok, col, val_tok, val_masked)
+                    val = "[MASK]"
+                tuple_list[i] = (col_tok, col, val_tok, val)
 
         side_tokenized = ' '.join([' '.join(t) for t in tuple_list])
         return side_tokenized

@@ -27,9 +27,11 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     # compute metrics
     if itemwise_embeddings:
         metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
+        preds = None
     else:
-        metrics_dict, metrics_dict2 = __test_model_pairwise(model, blocker, dataset, task, ir_eval, device, with_audio)            
-        
+        preds = __pred_model_pairwise(model, blocker, dataset, task, device)
+        metrics_dict, metrics_dict2 = __test_model_pairwise(preds, dataset, task, ir_eval, device)
+
     test_time = time.monotonic() - start_time
         
     print('Total time: {:.0f}m{:.0f}s.'.format(test_time // 60, test_time % 60))
@@ -39,24 +41,22 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
         
     model.train()
 
-    return metrics_dict, metrics_dict2
+    return metrics_dict, metrics_dict2, preds
 
 
-def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker, 
+def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker, 
                           dataset: torch.utils.data.Dataset, task: str,
-                            ir_eval: RetrievalEvaluation, device: str, with_audio: bool):
+                            device: str):
     """Embeddings on pair level (slow!), thus with blocking recommended.
     """
     model.eval()
     model_name = type(model).__name__
-    
-    left_df, right_df = dataset.get_dfs_by_task(task)
-    x_length, y_length = len(left_df), len(right_df)
-    
+        
     target_matrix = dataset.get_target_matrix().to(device)
     
     # get indices to predict on
     if blocker is not None:
+        left_df, right_df = dataset.get_dfs_by_task(task)
         blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
         pred_indices = torch.nonzero(blocking_mask.triu(1))
 
@@ -98,8 +98,15 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
         
         preds[i,j] = pred.item()
         preds[j,i] = pred.item()
-        
+    
+    return preds
+
+
+def __test_model_pairwise(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
+                          ir_eval: RetrievalEvaluation, device: str):
+
     print(f"Evaluation task {task}")
+    target_matrix = dataset.get_target_matrix().to(device)
 
     results = {}
     for audio_model in [None, "cqtnet", "coverhunter"]:
@@ -119,13 +126,10 @@ def __test_model_pairwise(model: torch.nn.Module, blocker: Blocker,
             eval_type = "text_only"
 
         print(eval_type)
-        metrics_dict = ir_eval.eval(target_matrix, preds1=preds, preds2=audio_preds)
+        metrics_dict = ir_eval.eval(target_matrix, preds1=preds_text, preds2=audio_preds)
 
         results[eval_type] = metrics_dict
         print(f"mAP: {metrics_dict['mAP']}, MR1: {metrics_dict['MR1']}, P@10: {metrics_dict['P@10']}")
-
-        if not with_audio:
-            break
         
     return results, None
            
@@ -283,8 +287,15 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     
     itemwise_embeddings = model_name == "sentence-transformers"
     
-    results1, results2 = test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
+    results1, results2, preds = test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
     
+    if preds is not None:
+        preds_path = os.path.join("preds", model_name, dataset_name)
+        print(f"Saving preds to {preds_path}")
+        os.makedirs(preds_path, exist_ok=True)
+        torch.save(preds, preds_path + "preds.pt")
+        dataset.data.to_csv(preds_path + "data.csv", sep=";")
+
     results_path = os.path.join("results", dataset_name, tokenizer_name, model_name, task)
     os.makedirs(results_path, exist_ok=True)
 
@@ -302,12 +313,15 @@ if __name__ == "__main__":
                         choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
-    parser.add_argument("--blocking_func", type=str, default="fuzz.token_set_ratio")
-    parser.add_argument("--dataset_name", type=str, default="shs100k2_test", 
-                        choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
+    parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")
+    parser.add_argument("--dataset_name", type=str, default="shs100k2_test_balanced", 
+                        choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos", 
+                                 "shs100k2_test_balanced", "shs100k2_test_frequent_classes", 
+                                 "da-tacos_balanced"],
                         help="Dataset name")
-    parser.add_argument("--task", type=str, default="svLong", 
-                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", "vvLong", "tvShort", "tvLong", "tvShort+Tags"])
+    parser.add_argument("--task", type=str, default="rLong", 
+                        choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", 
+                                 "vvLong", "tvShort", "tvLong", "tvShort+Tags", "rLong", "rShort"])
     parser.add_argument("--nsample",  type=int, default=None)
     args = parser.parse_args()
 
