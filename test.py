@@ -25,12 +25,18 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     start_time = time.monotonic()
 
     # compute metrics
-    if itemwise_embeddings:
-        metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
-        preds = None
+    if model is not None:
+        if itemwise_embeddings:
+            metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
+            preds = None
+        else:
+            preds = __pred_model_pairwise(model, blocker, dataset, task, device)
+            metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device)
+        model.train()
     else:
-        preds = __pred_model_pairwise(model, blocker, dataset, task, device)
-        metrics_dict, metrics_dict2 = __test_model_pairwise(preds, dataset, task, ir_eval, device)
+        left_df, right_df = dataset.get_dfs_by_task(task)
+        preds = blocker.predict(left_df, right_df)
+        metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device)
 
     test_time = time.monotonic() - start_time
         
@@ -39,7 +45,6 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     if print_all:
         print(json.dumps(metrics_dict, indent=4))
         
-    model.train()
 
     return metrics_dict, metrics_dict2, preds
 
@@ -103,7 +108,7 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     return preds
 
 
-def __test_model_pairwise(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
+def __test_model_with_audio(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
                           ir_eval: RetrievalEvaluation, device: str):
 
     print(f"Evaluation task {task}")
@@ -194,7 +199,8 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
             
         return results_sym, results_asym
    
-    
+
+
 def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -254,13 +260,18 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 
         blocker = None
 
-    if model_name == 'rsupcon':
+    if model_name == 'fuzzy':
+        model = None
+        attr_num = None
+    elif model_name == 'rsupcon':
         model = ContrastiveClassifierModel(
             model=tokenizer_name,
             len_tokenizer=len(tokenizer), 
             checkpoint_path=checkpoint_dir + os.sep + "pytorch_model.bin",
             frozen=True,
             pos_neg=False)
+        model.to(device)
+
     elif model_name == 'ditto':
         attr_num = None
         model = DittoModel(device=device)
@@ -268,8 +279,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 
         saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
         model.load_state_dict(saved_state['model'])
+        model.to(device)
 
-        model.cuda()
     elif 'hiergat' in model_name:
         checkpoint = os.path.join("checkpoints", "hiergat", tokenizer_name, task) + os.sep + "model.pt"
         saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
@@ -279,19 +290,18 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         else:
             model = TranHGAT(attr_num=1, lm=tokenizer_name, device=device)
             model.load_state_dict(saved_state)
-        model.cuda()
+        model.to(device)
     elif model_name == "sentence-transformers":
         blocker, attr_num = None, None
         model = SBert('/'.join((model_name, tokenizer_name)), pooling='mean') 
         checkpoint = checkpoint_dir + os.sep + "model.pt"
         saved_state = torch.load(checkpoint)
         model.load_state_dict(saved_state["model"])
-        model.cuda()
-    elif model_name != "blocking":
+        model.to(device)
+    else:
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
         
-    model.to(device)
     
     itemwise_embeddings = model_name == "sentence-transformers"
     
@@ -318,7 +328,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
     parser.add_argument("--model_name", type=str, default="ditto", # default="hiergat_nosplit", 
-                        choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", "blocking"], help="Model name")
+                        choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", 
+                                 "fuzzy"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
     parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")
@@ -333,7 +344,7 @@ if __name__ == "__main__":
     parser.add_argument("--nsample",  type=int, default=None)
     args = parser.parse_args()
 
-    assert not (args.blocking_func is None and args.model_name == "blocker"), "Cannot use blocker as model without defined blocking function"
+    assert not (args.blocking_func is None and args.model_name == "fuzzy"), "Cannot use blocker as model without defined blocking function"
     
     main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample)    
     

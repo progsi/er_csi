@@ -119,6 +119,7 @@ class TestDataset(Dataset):
             how="left").set_index("yt_id")
         if len(preds.columns) > len(preds):
             preds = preds[preds.index]
+        preds = preds.loc[:, ~preds.columns.duplicated()]
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
         return torch.tensor(preds.values).to(self.device)
@@ -279,6 +280,15 @@ class TestDataset(Dataset):
         elif task == "rLong":
             left_cols = ["title", "performer", "video_title", "channel_name", "keywords", "description"]
             right_cols = left_cols
+        elif task == "tvShort":
+            left_cols = ["title"]
+            right_cols = ["video_title"]
+        elif task == "tvLong":
+            left_cols = ["title"]
+            right_cols = ["video_title", "channel_name", "description"]
+        elif task == "tvShort+Tags":
+            left_cols = ["title"]
+            right_cols = ["video_title", "channel_name", "keywords"]
         return left_cols, right_cols
         
     
@@ -485,6 +495,7 @@ class OnlineCoverSongDataset(Dataset):
             how="left").set_index("yt_id")
         if len(preds.columns) > len(preds):
             preds = preds[preds.index]
+        preds = preds.loc[:, ~preds.columns.duplicated()]
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
         return torch.tensor(preds.values).to(self.device)
