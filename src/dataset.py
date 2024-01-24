@@ -108,7 +108,7 @@ class TestDataset(Dataset):
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
-        preds_tensor = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt"))
 
         preds = pd.merge(
             self.data[["yt_id"]], 
@@ -231,7 +231,7 @@ class TestDataset(Dataset):
             attr_items = [item + ' COL' for item in items[0:-1]]
             attrs = []
             for attr_item in attr_items:
-                attrs.append([f"COL {attr_str}" for attr_str in re.findall(r"(?<=COL ).*?(?= COL)", attr_item)])
+                attrs.append([f"COL {attr_str}" for attr_str in re.findall(r"(?<=COL ).*?(?= COL)", attr_item.replace("\n", "").replace("\r", ""))])
             assert len(attrs[0]) == len(attrs[1])
         else:
             attrs = [[item] for item in items[0:-1]]
@@ -277,7 +277,7 @@ class TestDataset(Dataset):
             left_cols = ["title", "performer", "video_title", "channel_name"]
             right_cols = left_cols
         elif task == "rLong":
-            left_cols = ["title", "performer", "video_title", "channel_name", "description"]
+            left_cols = ["title", "performer", "video_title", "channel_name", "keywords", "description"]
             right_cols = left_cols
         return left_cols, right_cols
         
@@ -468,12 +468,13 @@ class OnlineCoverSongDataset(Dataset):
     
 
     def get_csi_pred_matrix(self, model_name: str):
-
+        
+        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
         preds_yt_ids = pd.read_csv(
-            os.path.join("preds", model_name, self.dataset_name, "data.csv"), 
+            os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
-        preds_tensor = torch.load(os.path.join("preds", model_name, self.dataset_name, "ypred.pt"))
+        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt"))
 
         preds = pd.merge(
             self.data[["yt_id"]], 
@@ -482,6 +483,8 @@ class OnlineCoverSongDataset(Dataset):
                 index=preds_yt_ids, 
                 columns=preds_yt_ids).reset_index(names="yt_id").drop_duplicates(subset="yt_id"),
             how="left").set_index("yt_id")
+        if len(preds.columns) > len(preds):
+            preds = preds[preds.index]
         preds = preds.reindex(index=preds.index, columns=preds.index)
         
         return torch.tensor(preds.values).to(self.device)

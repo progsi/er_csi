@@ -216,7 +216,14 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     if model_name != "sentence-transformers":
         
         if model_name == "hiergat_split":
-            attr_num = 3 if "Long" in task or "+Tags" in task or "rLong" in task or "rShort" in task else 2
+            if task == "rLong":
+                attr_num = 6
+            elif task == "rShort":
+                attr_num = 4
+            elif task == "svLong" or task == "vvLong" or "+Tags" in task:
+                attr_num = 3
+            else:
+                attr_num = 2
         elif model_name == "hiergat_nosplit":
             attr_num = 1
         else:
@@ -280,7 +287,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         saved_state = torch.load(checkpoint)
         model.load_state_dict(saved_state["model"])
         model.cuda()
-    else:
+    elif model_name != "blocking":
         print(f"Model {model_name} is not implemented!")
         raise NotImplementedError
         
@@ -294,8 +301,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         preds_path = os.path.join("preds", model_name, dataset_name)
         print(f"Saving preds to {preds_path}")
         os.makedirs(preds_path, exist_ok=True)
-        torch.save(preds, preds_path + "preds.pt")
-        dataset.data.to_csv(preds_path + "data.csv", sep=";")
+        torch.save(preds, preds_path + os.sep + "preds.pt")
+        dataset.data.to_csv(preds_path + os.sep +"data.csv", sep=";")
 
     results_path = os.path.join("results", dataset_name, tokenizer_name, model_name, task)
     os.makedirs(results_path, exist_ok=True)
