@@ -62,6 +62,7 @@ class TestDataset(Dataset):
             self.data["performer"] = self.data["perf_artist"]
             self.data.drop("perf_artist", axis=1)
 
+
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
@@ -387,7 +388,7 @@ class TrainingDataset(Dataset):
         Returns:
             _type_: _description_
         """
-        labels = torch.from_numpy(self.data["set_id"].values) 
+        labels = torch.from_numpy(self.data["set_id_norm"].values) 
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -440,6 +441,18 @@ class OnlineCoverSongDataset(Dataset):
             self.data["nlabel"] = 2
         self.data["set_id_norm"] = self.data.set_id.rank(method='dense').astype(int) - 1
         
+                # for DaTacos
+        if "perf_title" in self.data:
+            self.data["title"] = self.data["perf_title"]
+            self.data.drop("perf_title", axis=1)
+        if "perf_artist" in self.data:
+            self.data["performer"] = self.data["perf_artist"]
+            self.data.drop("perf_artist", axis=1)
+        if self.data['set_id'].apply(lambda x: isinstance(x, str)).any():
+            self.data['set_id'] = self.data['set_id'].str.replace("W_", "").astype(int)
+        if self.data['ver_id'].apply(lambda x: isinstance(x, str)).any():
+            self.data['ver_id'] = self.data['ver_id'].str.replace("P_", "").astype(int)
+
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
@@ -473,7 +486,7 @@ class OnlineCoverSongDataset(Dataset):
         Returns:
             _type_: _description_
         """
-        labels = torch.from_numpy(self.data["set_id"].values) 
+        labels = torch.from_numpy(self.data["set_id_norm"].values) 
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
