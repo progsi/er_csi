@@ -54,6 +54,14 @@ class TestDataset(Dataset):
             self.data["nlabel"] = 2
         self.data["set_id_norm"] = self.data.set_id.rank(method='dense').astype(int) - 1
         
+        # for DaTacos
+        if "perf_title" in self.data:
+            self.data["title"] = self.data["perf_title"]
+            self.data.drop("perf_title", axis=1)
+        if "perf_artist" in self.data:
+            self.data["performer"] = self.data["perf_artist"]
+            self.data.drop("perf_artist", axis=1)
+
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
@@ -87,7 +95,7 @@ class TestDataset(Dataset):
         Returns:
             _type_: _description_
         """
-        labels = torch.from_numpy(self.data["set_id"].values) 
+        labels = torch.from_numpy(self.data["set_id_norm"].values) 
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -190,7 +198,8 @@ class TestDataset(Dataset):
         tokenized = self.tokenizer.encode_plus(
                         serialized_text, 
                         add_special_tokens=True,
-                        return_tensors="pt")
+                        return_tensors="pt",
+                        max_length=256)
         return tokenized["input_ids"].to(self.device), tokenized["attention_mask"].to(self.device)
 
     def getitem_pair_tokenized(self, idx_left, idx_right, task):
