@@ -1,11 +1,16 @@
 from rapidfuzz import process, fuzz, distance
 import torch
 
-   
+# Total masking strategies
+# strategies: above (traditional), below, inner    
+
+
 class Blocker(object):
-    def __init__(self, blocking_func: str, threshold: float, workers: int = 64, device: str = "cuda") -> None:
+    def __init__(self, blocking_func: str, threshold: float, workers: int = 64, device: str = "cuda", 
+                 strategy: str = "above") -> None:
         self.blocking_func = blocking_func
         self.threshold = threshold
+        self.strategy = strategy
         self.workers = workers
         self.device = device
         
@@ -26,7 +31,12 @@ class Blocker(object):
         if torch.max(y).item() > 1:
             y = y / 100
         
-        mask = torch.where(y > self.threshold, torch.tensor(1), torch.tensor(0))
+        if self.strategy == "above":
+            mask = torch.where(y > self.threshold, torch.tensor(1), torch.tensor(0))
+        elif self.strategy == "below":
+            mask = torch.where(y < self.threshold, torch.tensor(1), torch.tensor(0))
+        else:
+            raise NotImplementedError
 
-        return mask
+        return mask, y
         

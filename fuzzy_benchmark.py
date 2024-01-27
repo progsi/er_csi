@@ -7,7 +7,7 @@ from rapidfuzz import process, fuzz, distance
 import yaml
 import json
 from nltk.stem.snowball import SnowballStemmer
-from torchmetrics.classification import BinaryRecall
+from torchmetrics.classification import BinaryRecall, BinaryPrecision
 from torchmetrics.retrieval import RetrievalMAP, RetrievalNormalizedDCG
 
 
@@ -48,7 +48,7 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
     
     data = dataset.get_df()
     
-    items_shs = data.apply(lambda x: x.title_shs + ' ' + x.performer, axis=1).to_list()
+    items_shs = data.apply(lambda x: x.title_shs, axis=1).to_list()
     items_yt_short = data.apply(lambda x: x.title_yt + ' ' + x.channel_name, axis=1).to_list()
     
     mAP = RetrievalMAP(empty_target_action="skip").to(device)
@@ -61,7 +61,8 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
     for thr in thresholds:
 
         recall = BinaryRecall(threshold=thr).to(device)
-        
+        precision = BinaryPrecision(threshold=thr).to(device)
+
         try:
             print(f"\nScoring {scorer}, threshold: {thr}")
             prediction_matrix = torch.tensor(process.cdist(items_shs, items_yt_short, scorer=eval(scorer), workers=64))
@@ -83,6 +84,7 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
         map = mAP(preds, target, indexes=indexes)
         ndcg = nDCG(preds, target, indexes=indexes)
         rc = recall(preds, target).item()
+        pr = precision(preds, target).item()
 
         pairs = preds[preds > thr].sum().item()
         items = preds.shape[0]
@@ -90,6 +92,7 @@ def benchmark_blocking_threshold(dataset: torch.utils.data.Dataset,
         match_ratio = pairs / items**2
         
         print(f"Recall: {round(rc, 4)}, inference time: {test_time}")
+        print(f"Precision: {round(pr, 4)}, inference time: {test_time}")
         print(f"mAP: {round(map.item(), 4)}, inference time: {test_time}")
         print(f"nDCG: {round(ndcg.item(), 4)}, inference time: {test_time}")
         print(f"nPairs: {round(pairs)}, P/E ratio: {round(pair_item_ratio, 2)}, Match Ratio: {round(match_ratio, 2)}")
@@ -248,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="shs100k2_val", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos"], 
                         help="Dataset name")
-    parser.add_argument("--scorer", type=str, default="distance.JaroWinkler.normalized_similarity")
+    parser.add_argument("--scorer", type=str, default="fuzz.token_ratio")
 
     args = parser.parse_args()
 

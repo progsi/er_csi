@@ -20,25 +20,25 @@ from transformers import AutoTokenizer, AutoConfig
 
 def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
          device: str, ir_eval: RetrievalEvaluation, itemwise_embeddings: bool, 
-         blocker: Blocker, task: str, with_audio: bool, print_all=False):
+         blocker: Blocker, task: str, with_audio: bool, only_original: bool, print_all=False):
     
     start_time = time.monotonic()
 
     # compute metrics
     if model is not None:
         if itemwise_embeddings:
-            audio_weight = 0.6 # found with grid search on validation set 
+            audio_weight = 0.8 # found with grid search on validation set 
             metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio, weight2=audio_weight)
             preds = None
         else:
             preds = __pred_model_pairwise(model, blocker, dataset, task, device)
-            metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device)
+            metrics_dict, metrics_dict2 = __test_model(preds, dataset, task, ir_eval, device)
         model.train()
     else:
         left_df, right_df = dataset.get_dfs_by_task(task)
         preds = blocker.predict(left_df, right_df) / 100
         audio_weight = 0.8 # found with grid search on validation set
-        metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device, weight2=audio_weight)
+        metrics_dict, metrics_dict2 = __test_model(preds, dataset, task, ir_eval, device, weight2=audio_weight)
 
     test_time = time.monotonic() - start_time
         
@@ -63,12 +63,11 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     
     # get indices to predict on
     if blocker is not None:
-        left_df, right_df = dataset.get_dfs_by_task(task)
-        blocking_mask = blocker.block(left_df, right_df) if blocker is not None else None    
+        left_df, right_df = dataset.get_dfs_by_task("tvShort")
+        blocking_mask, preds = blocker.block(left_df, right_df) if blocker is not None else None    
         pred_indices = torch.nonzero(blocking_mask.triu(1))
 
         preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
-
     else:
         preds = torch.zeros_like(target_matrix).to(dtype=torch.float32)
         rows, cols = preds.size()
@@ -110,7 +109,7 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     return preds
 
 
-def __test_model_with_audio(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
+def __test_model(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
                           ir_eval: RetrievalEvaluation, device: str, weight2 = 0.5):
 
     print(f"Evaluation task {task}")
@@ -122,13 +121,21 @@ def __test_model_with_audio(preds_text: torch.Tensor, dataset: torch.utils.data.
         print("\n")
 
         if audio_model is not None:
-            audio_preds = dataset.get_csi_pred_matrix(audio_model) 
-            eval_type = audio_model + "+text"
 
-            print(f"audio_only: {audio_model}")
-            metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
-            print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, MRR: {metrics_dict_audio['MRR']}")
-           
+            try:
+                audio_preds = dataset.get_csi_pred_matrix(audio_model) 
+                            
+                eval_type = audio_model + "+text"
+
+                print(f"audio_only: {audio_model}")
+                metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
+                print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, MRR: {metrics_dict_audio['MRR']}")
+            
+            except FileNotFoundError:
+
+                print(f"Given dataset not predicted for model {audio_model}")
+                continue
+
         else:
             audio_preds = None
             eval_type = "text_only"
@@ -218,7 +225,7 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
         return results_sym, results_asym
 
 
-def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None):
+def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None, only_original: bool = False):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -258,11 +265,12 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         config_data["yt_metadata_file"],
         tokenizer=tokenizer,
         attr_num=attr_num,
-        nsample=nsample
+        nsample=nsample,
+        only_original=only_original
         )
 
         if nsample is None and blocking_func is not None:
-            blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.2) # for > 0.95 recall (empirical)
+            blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.8, strategy="above") # for > 0.95 recall (empirical)
         else:
             blocker = None
     else:
@@ -272,7 +280,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             dataset_name,
             config_data["data_path"],
             config_data["yt_metadata_file"],
-            task
+            task,
+            only_original=only_original
         )  
 
         blocker = None
@@ -321,8 +330,9 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
     
     itemwise_embeddings = model_name == "sentence-transformers"
-    
-    results1, results2, preds = test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, True)
+    with_audio = "_one" not in dataset_name
+
+    results1, results2, preds = test(model, dataset, device, ir_eval, itemwise_embeddings, blocker, task, with_audio, only_original)
     
     if preds is not None:
         preds_path = os.path.join("preds", model_name, dataset_name)
@@ -353,17 +363,19 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test_balanced", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos", 
                                  "shs100k2_test_balanced", "shs100k2_test_frequent_classes", 
-                                 "da-tacos_balanced"],
+                                 "da-tacos_balanced", "shs100k2_test_grouped", "shs100k2_test_one",
+                                 "shs100k2_test_one2"],
                         help="Dataset name")
     parser.add_argument("--task", type=str, default="rLong", 
                         choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", 
                                  "vvLong", "tvShort", "tvLong", "tvShort+Tags", "rLong", "rShort"])
     parser.add_argument("--nsample",  type=int, default=None)
+    parser.add_argument('-o', '--only_original', action='store_true')
     args = parser.parse_args()
 
     assert not (args.blocking_func is None and args.model_name == "fuzzy"), "Cannot use blocker as model without defined blocking function"
     
-    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample)    
+    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample, args.only_original)    
     
         
         

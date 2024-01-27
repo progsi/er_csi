@@ -23,12 +23,14 @@ class TestDataset(Dataset):
             device: str = "cuda",
             attr_num: str = None,
             max_len: int = 256,
-            nsample: int = None
+            nsample: int = None,
+            only_original: bool = False
         ) -> None:
             
         super().__init__()
         
         self.dataset_name = dataset_name
+        self.only_original = only_original
         
         self.tokenizer = tokenizer
         
@@ -43,7 +45,10 @@ class TestDataset(Dataset):
         # the dataset
         self.data = pd.read_csv(
             os.path.join(self.data_path, dataset_name + '.csv'), sep=";")
-        self.data = self.data.query("has_file")
+        
+        if not self.dataset_name in ["shs100k2_test_one", "shs100k2_test_one2"]: 
+            self.data = self.data.query("has_file")
+        
         if nsample is not None:
             self.data = self.data.tail(nsample)
             
@@ -62,6 +67,8 @@ class TestDataset(Dataset):
             self.data["performer"] = self.data["perf_artist"]
             self.data.drop("perf_artist", axis=1)
 
+        if self.only_original:
+            self.data = pd.merge(self.data, self.__get_originals_df()[["set_id", "title", "performer"]], on="set_id", suffixes=["_indiv", ""])
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
@@ -74,20 +81,43 @@ class TestDataset(Dataset):
     def __getitem__(self, idx):
         
         item = dict(self.data.iloc[idx])
-            
+
         yt_id = item["yt_id"]    
         
         # get youtube metadata 
-        item_yt = self.metadata.loc[self.metadata.yt_id == yt_id]
-        item["video_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
-        item["channel_name"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
-        item["description"] = self.text_transform(item_yt.description.item()) if not item_yt.description.empty else ''
-        item["keywords"] = ' '.join([
-                self.text_transform(keyword) for keyword in item_yt.keywords.item()
-            ]) if len(item_yt.keywords) > 0 else ''
-        
+        if item["set_id"] >= 0: # normal dataset ID
+            item_yt = self.metadata.loc[self.metadata.yt_id == yt_id]
+            item["video_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
+            item["channel_name"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
+            item["description"] = self.text_transform(item_yt.description.item()) if not item_yt.description.empty else ''
+            item["keywords"] = ' '.join([
+                    self.text_transform(keyword) for keyword in item_yt.keywords.item()
+                ]) if len(item_yt.keywords) > 0 else ''
+        else:
+            item["video_title"] = item["title_generated"]
+            item["channel_name"] = self.metadata.sample(n=1).channel_name.item() # sample random channel name
+            item["description"] = ''
+            item["keywords"] = ''
+
         return item
     
+    def __get_originals_df(self):
+        def __update_columns(group):
+            first_ver_id = group['ver_id'].iloc[0]
+            group['ver_id'] = first_ver_id
+            group['title'] = group['title'].iloc[0]
+            group['performer'] = group['performer'].iloc[0]
+            return group
+
+        # Apply the function to each group of set_id
+        data_originals = self.data.groupby('set_id').apply(__update_columns)
+
+        # Drop duplicate rows (keeping only the first ver_id in each set_id)
+        data_originals = data_originals.drop_duplicates(subset='set_id')
+
+        # Reset index if needed
+        data_originals = data_originals.reset_index(drop=True)
+        return data_originals
     
     def get_target_matrix(self):
         """Generates the binary square matrix of cover song relationships between all
@@ -96,6 +126,7 @@ class TestDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
+        ids = torch.from_numpy(self.data["set_id"].values)
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -105,11 +136,15 @@ class TestDataset(Dataset):
         target = torch.zeros(len(self.data), len(self.data), dtype=torch.int32)
         target[mask] = (labels[:, None] == labels).int()[mask]
 
+        # non negative mask for generated titles
+        non_negative_mask = (ids > 0).int().unsqueeze(0) * (ids > 0).int().unsqueeze(1)
+        target = torch.where(non_negative_mask > 0, target, 0)
+
         return target
     
     def get_csi_pred_matrix(self, model_name: str):
         
-        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
+        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "").replace("_grouped", "")
                                  
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
@@ -166,7 +201,7 @@ class TestDataset(Dataset):
         # mask shs info
         if mask_shs:
             for i, (col_tok, col, val_tok, val) in enumerate(tuple_list):
-                if col_tok in ["performer", "title"]:
+                if col in ["performer", "title"]:
                     val = "[MASK]"
                 tuple_list[i] = (col_tok, col, val_tok, val)
 
@@ -193,7 +228,8 @@ class TestDataset(Dataset):
         left_cols, right_cols = self.__get_cols_by_task(task)
         rel_cols = left_cols if side == "left" else right_cols
         
-        serialized_text = self.serialize_item(item, rel_cols)
+        mask_shs = side == "right"
+        serialized_text = self.serialize_item(item, rel_cols, mask_shs=mask_shs)
         tokenized = self.tokenizer.encode_plus(
                         serialized_text, 
                         add_special_tokens=True,
@@ -230,7 +266,12 @@ class TestDataset(Dataset):
         left_cols, right_cols = self.__get_cols_by_task(task)
         
         serialized_text_left = self.serialize_item(item_left, left_cols).replace("[", "").replace("]", "")
-        serialized_text_right = self.serialize_item(item_right, right_cols).replace("[", "").replace("]", "")
+
+        if "rLong" in task or "rShort" in task:
+            serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=True)
+        else:
+            serialized_text_right = self.serialize_item(item_right, right_cols)
+        serialized_text_right = serialized_text_right.replace("[", "").replace("]", "")
 
         sent = serialized_text_left + ' [SEP] ' + serialized_text_right
         label = torch.tensor(1 if item_left["set_id"] == item_right["set_id"] else 0).unsqueeze(0)
@@ -331,7 +372,9 @@ class TrainingDataset(Dataset):
         # the dataset
         self.data = pd.read_csv(
             os.path.join(self.data_path, dataset_name + '.csv'), sep=";")
-        self.data = self.data.query("has_file")
+
+        if not self.dataset_name in ["shs100k2_test_one", "shs100k2_test_one2"]: 
+            self.data = self.data.query("has_file")
         if "nlabel" not in self.data.columns:
             """If no nlabel is specified (as in datasets SHS100K, Da-Tacos, etc.)
             then we assign a column with 2s indicating that are items are versions.
@@ -380,6 +423,7 @@ class TrainingDataset(Dataset):
         
         return item
     
+
     def get_target_matrix(self):
         """Generates the binary square matrix of cover song relationships between all
         elements in the dataset.
@@ -387,6 +431,7 @@ class TrainingDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
+        ids = torch.from_numpy(self.data["set_id"].values)
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -395,6 +440,10 @@ class TrainingDataset(Dataset):
 
         target = torch.zeros(len(self.data), len(self.data), dtype=torch.int32)
         target[mask] = (labels[:, None] == labels).int()[mask]
+
+        # non negative mask for generated titles
+        non_negative_mask = (ids > 0).int().unsqueeze(0) * (ids > 0).int().unsqueeze(1)
+        target = torch.where(non_negative_mask > 0, target, 0)
 
         return target
     
@@ -411,13 +460,15 @@ class OnlineCoverSongDataset(Dataset):
             data_path: str, # path with datasets metadata
             metadata_file_path: str, # path to youtube metadata in parquet file
             task: str, # determines attr pairs
-            device: str = "cuda"
+            device: str = "cuda",
+            only_original: bool = False # whether to use only item of original on the query side.
         ) -> None:
             
         super().__init__()
         
         self.dataset_name = dataset_name
-        
+        self.only_original = only_original
+
         self.data_path = data_path
         self.metadata_file_path = metadata_file_path
         self.task = task
@@ -431,7 +482,10 @@ class OnlineCoverSongDataset(Dataset):
         # the dataset
         self.data = pd.read_csv(
             os.path.join(self.data_path, dataset_name + '.csv'), sep=";")
-        self.data = self.data.query("has_file")
+                
+        if not self.dataset_name in ["shs100k2_test_one", "shs100k2_test_one2"]: 
+            self.data = self.data.query("has_file")
+
         if "nlabel" not in self.data.columns:
             """If no nlabel is specified (as in datasets SHS100K, Da-Tacos, etc.)
             then we assign a column with 2s indicating that are items are versions.
@@ -451,17 +505,20 @@ class OnlineCoverSongDataset(Dataset):
         if self.data['ver_id'].apply(lambda x: isinstance(x, str)).any():
             self.data['ver_id'] = self.data['ver_id'].str.replace("P_", "").astype(int)
 
+        if self.only_original:
+            self.data = pd.merge(self.data, self.__get_originals_df()[["set_id", "title", "performer"]], on="set_id", suffixes=["_indiv", ""])      
+        
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
-        
+    
     def __len__(self):
         return len(self.data)
         
     def __getitem__(self, idx):
         
         item = dict(self.data.iloc[idx])
-            
+
         yt_id = item["yt_id"]    
         
         # get youtube metadata 
@@ -477,7 +534,26 @@ class OnlineCoverSongDataset(Dataset):
         item["right_side"] = ' '.join([' '.join(("[COL]", col, "[VAL]", item[col])) for col in self.right_cols])
 
         return item
+     
+    def __get_originals_df(self):
+        def __update_columns(group):
+            first_ver_id = group['ver_id'].iloc[0]
+            group['ver_id'] = first_ver_id
+            group['title'] = group['title'].iloc[0]
+            group['performer'] = group['performer'].iloc[0]
+            return group
+
+        # Apply the function to each group of set_id
+        data_originals = self.data.groupby('set_id').apply(__update_columns)
+
+        # Drop duplicate rows (keeping only the first ver_id in each set_id)
+        data_originals = data_originals.drop_duplicates(subset='set_id')
+
+        # Reset index if needed
+        data_originals = data_originals.reset_index(drop=True)
+        return data_originals
     
+
     def get_target_matrix(self):
         """Generates the binary square matrix of cover song relationships between all
         elements in the dataset.
@@ -485,6 +561,7 @@ class OnlineCoverSongDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
+        ids = torch.from_numpy(self.data["set_id"].values)
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -494,12 +571,15 @@ class OnlineCoverSongDataset(Dataset):
         target = torch.zeros(len(self.data), len(self.data), dtype=torch.int32)
         target[mask] = (labels[:, None] == labels).int()[mask]
 
+        # non negative mask for generated titles
+        non_negative_mask = (ids > 0).int().unsqueeze(0) * (ids > 0).int().unsqueeze(1)
+        target = torch.where(non_negative_mask > 0, target, 0)
+
         return target
-    
 
     def get_csi_pred_matrix(self, model_name: str):
         
-        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
+        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "").replace("_grouped", "")
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
