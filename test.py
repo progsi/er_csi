@@ -27,7 +27,8 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     # compute metrics
     if model is not None:
         if itemwise_embeddings:
-            metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio)
+            audio_weight = 0.6 # found with grid search on validation set 
+            metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio, weight2=audio_weight)
             preds = None
         else:
             preds = __pred_model_pairwise(model, blocker, dataset, task, device)
@@ -35,8 +36,9 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
         model.train()
     else:
         left_df, right_df = dataset.get_dfs_by_task(task)
-        preds = blocker.predict(left_df, right_df)
-        metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device)
+        preds = blocker.predict(left_df, right_df) / 100
+        audio_weight = 0.8 # found with grid search on validation set
+        metrics_dict, metrics_dict2 = __test_model_with_audio(preds, dataset, task, ir_eval, device, weight2=audio_weight)
 
     test_time = time.monotonic() - start_time
         
@@ -109,13 +111,13 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
 
 
 def __test_model_with_audio(preds_text: torch.Tensor, dataset: torch.utils.data.Dataset, task: str, 
-                          ir_eval: RetrievalEvaluation, device: str):
+                          ir_eval: RetrievalEvaluation, device: str, weight2 = 0.5):
 
     print(f"Evaluation task {task}")
     target_matrix = dataset.get_target_matrix().to(device)
 
     results = {}
-    for audio_model in [None, "cqtnet", "coverhunter"]:
+    for audio_model in [None, "coverhunter", "cqtnet"]:
         
         print("\n")
 
@@ -125,23 +127,23 @@ def __test_model_with_audio(preds_text: torch.Tensor, dataset: torch.utils.data.
 
             print(f"audio_only: {audio_model}")
             metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
-            print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, P@10: {metrics_dict_audio['P@10']}")
+            print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, MRR: {metrics_dict_audio['MRR']}")
            
         else:
             audio_preds = None
             eval_type = "text_only"
 
         print(eval_type)
-        metrics_dict = ir_eval.eval(target_matrix, preds1=preds_text, preds2=audio_preds)
+        metrics_dict = ir_eval.eval(target_matrix, preds1=preds_text, preds2=audio_preds, weight2=weight2)
 
         results[eval_type] = metrics_dict
-        print(f"mAP: {metrics_dict['mAP']}, MR1: {metrics_dict['MR1']}, P@10: {metrics_dict['P@10']}")
+        print(f"mAP: {metrics_dict['mAP']}, MR1: {metrics_dict['MR1']}, MRR: {metrics_dict['MRR']}")
         
     return results, None
            
                     
 def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Dataset, 
-                            ir_eval: RetrievalEvaluation, device: str, with_audio: bool):
+                            ir_eval: RetrievalEvaluation, device: str, with_audio: bool, weight2: float = 0.5):
     """Embeddings on item level (fast!)
     """
     model.eval()
@@ -168,7 +170,19 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
 
         results_sym, results_asym = {}, {}
 
-        for audio_model in [None, "cqtnet", "coverhunter"]:
+        text_preds_ll = ir_eval.pairwise_cosine_similarities(emb_all, emb_all)
+        text_preds_lr = ir_eval.pairwise_cosine_similarities(emb_all, emb_all2)
+        preds_path = os.path.join("preds", "sentence-transformers", dataset.dataset_name)
+        os.makedirs(preds_path, exist_ok=True)
+        torch.save(text_preds_lr, preds_path + os.sep + "preds.pt")
+        torch.save(emb_all, preds_path + os.sep + "emb_all.pt")
+        torch.save(emb_all2, preds_path + os.sep + "emb_all2.pt")
+
+        # free GPU memory
+        del emb_all, emb_all2
+        torch.cuda.empty_cache()
+        
+        for audio_model in [None, "coverhunter", "cqtnet"]:
             
             if audio_model is not None:
                 audio_preds = dataset.get_csi_pred_matrix(audio_model) 
@@ -176,7 +190,7 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
                 print(f"audio_only: {audio_model}")
              
                 metrics_dict_audio = ir_eval.eval(target_matrix, preds1=audio_preds)
-                print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, P@10: {metrics_dict_audio['P@10']}")
+                print(f"mAP: {metrics_dict_audio['mAP']}, MR1: {metrics_dict_audio['MR1']}, MRR: {metrics_dict_audio['MRR']}")
             
             else:
                 audio_preds = None
@@ -185,20 +199,23 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
             print(eval_type)
            
             print("Evaluation left side - left side")
-            metrics_dict_sym = ir_eval.eval(target_matrix, emb_all1=emb_all, preds2=audio_preds)
-            print(f"mAP: {metrics_dict_sym['mAP']}, MR1: {metrics_dict_sym['MR1']}, P@10: {metrics_dict_sym['P@10']}")
+            metrics_dict_sym = ir_eval.eval(target_matrix, preds1=text_preds_ll, preds2=audio_preds, weight2=weight2)
+            print(f"mAP: {metrics_dict_sym['mAP']}, MR1: {metrics_dict_sym['MR1']}, MRR: {metrics_dict_sym['MRR']}")
             print("Evaluation left side - right side")
-            metrics_dict_asym = ir_eval.eval(target_matrix, emb_all1=emb_all, emb_all2=emb_all2, preds2=audio_preds)
-            print(f"mAP: {metrics_dict_asym['mAP']}, MR1: {metrics_dict_asym['MR1']}, P@10: {metrics_dict_asym['P@10']}")
+            metrics_dict_asym = ir_eval.eval(target_matrix, preds1=text_preds_lr, preds2=audio_preds, weight2=weight2)
+            print(f"mAP: {metrics_dict_asym['mAP']}, MR1: {metrics_dict_asym['MR1']}, MRR: {metrics_dict_asym['MRR']}")
 
             results_sym[eval_type] = metrics_dict_sym
             results_asym[eval_type] = metrics_dict_asym
+
+            # free CUDA memory
+            del audio_preds
+            torch.cuda.empty_cache()
 
             if not with_audio:
                 break
             
         return results_sym, results_asym
-   
 
 
 def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None):

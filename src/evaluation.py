@@ -51,6 +51,10 @@ class RetrievalEvaluation(object):
         # N x N matrix
         if preds1 == None:
             preds1 = self.pairwise_cosine_similarities(emb_all1, emb_all2)
+            # free cuda memory
+            del emb_all1, emb_all2
+            torch.cuda.empty_cache()
+
         if preds2 != None:
             # linear combination of preds
             preds = weight2 * preds2 + (1 - weight2) * preds1
@@ -68,37 +72,41 @@ class RetrievalEvaluation(object):
             metrics, since the results are note reasonable. We just retain results
             which are based on the first rank, such as MR1 and MRR.
         """
-        # if target is ordinal, distinguish between ordinal and binary target
-        target_ord = None
-        if torch.max(target) > 1:
-            target_ord = target # ordinal
-            target = torch.where(target > 1, 1, 0) # binary
-        
-        # indexes for input structure for torchmetrics
+                # indexes for input structure for torchmetrics
         m, n = target.shape
         indexes = torch.arange(m).view(-1, 1).expand(-1, n).to(self.device)
+        
+        mrr_result = self.MRR(preds, target, indexes).item()
+        mr1_result = self.__mean_rank_1(preds, target).item()
         
         # metrics which only refer to the first rank
         ir_dict = {
             "Queries": int(len(target)),
             "Relevant Items": int(torch.sum(target).item()),
-            "MRR": self.MRR(preds, target, indexes).item(), 
-            "MR1": self.__mean_rank_1(preds, target).item()
+            "MRR": mrr_result, 
+            "MR1": mr1_result
         }
         
+        del mr1_result, mrr_result
+        torch.cuda.empty_cache()
+
         # metrics which concern the top 10 or whole ranking
         if not cls_based:
-            non_cls_evals = {
-                "mAP": self.mAP(preds, target, indexes).item(),
-                "nDCG_ord": self.nDCG(preds, target_ord, indexes).item() 
-                    if target_ord is not None else torch.nan, 
-                "nDCG_bin": self.nDCG(preds, target, indexes).item(), 
-                "P@10": self.P10(preds, target, indexes).item(),
-                "HR10": self.H10(preds, target, indexes).item(),
-                "rP": self.rP(preds, target, indexes).item()
-                }
+            # Create the dictionary with stored results
+            non_cls_evals = {}
+
+            map_result = self.mAP(preds, target, indexes).item()
+            non_cls_evals["mAP"] = map_result
+            # to free cuda memory
+            del map_result 
+            torch.cuda.empty_cache()
+
+            # to free cuda memory
+            del preds, target, indexes 
+            torch.cuda.empty_cache()
+
             ir_dict.update(non_cls_evals)
-            
+        
         return dict(sorted(ir_dict.items()))
     
     def __mean_rank_1(self, preds, target):
@@ -120,5 +128,9 @@ class RetrievalEvaluation(object):
         sel = sel.float()
         sel[~has_positives] = torch.nan
         
-        return torch.nanmean((sel+1).float())
+        mr1 = torch.nanmean((sel+1).float())
+
+        del sel, found, temp, spred, has_positives
+        torch.cuda.empty_cache()
+        return mr1
 

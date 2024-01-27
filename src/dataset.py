@@ -62,7 +62,6 @@ class TestDataset(Dataset):
             self.data["performer"] = self.data["perf_artist"]
             self.data.drop("perf_artist", axis=1)
 
-
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
@@ -110,7 +109,6 @@ class TestDataset(Dataset):
     
     def get_csi_pred_matrix(self, model_name: str):
         
-
         dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "")
                                  
         preds_yt_ids = pd.read_csv(
