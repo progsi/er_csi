@@ -363,7 +363,10 @@ if __name__ == "__main__":
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test_balanced", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos", 
                                  "shs100k2_test_balanced", "shs100k2_test_frequent_classes", 
-                                 "da-tacos_balanced", "shs100k2_test_grouped", "shs100k2_test_one",
+                                 "da-tacos_balanced", "da-tacos_genre", "da-tacos_instrument",
+                                 "shs100k2_test_genre", "shs100k2_test_instrument",
+                                 "shs100k2_test_grouped", "shs100k2_test_one",
+                                 "shs100k2_test_nonmusic2", "shs100k2_test_nonmusic", 
                                  "shs100k2_test_one2"],
                         help="Dataset name")
     parser.add_argument("--task", type=str, default="rLong", 
