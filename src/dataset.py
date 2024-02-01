@@ -85,7 +85,7 @@ class TestDataset(Dataset):
         yt_id = item["yt_id"]    
         
         # get youtube metadata 
-        if item["set_id"] >= 0: # normal dataset ID
+        if type(item["set_id"]) == str or item["set_id"] >= 0: # normal dataset ID
             item_yt = self.metadata.loc[self.metadata.yt_id == yt_id]
             item["video_title"] = self.text_transform(item_yt.title.item()) if not item_yt.title.empty else ''
             item["channel_name"] = self.text_transform(item_yt.channel_name.item()) if not item_yt.channel_name.empty else ''
@@ -126,7 +126,12 @@ class TestDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
-        ids = torch.from_numpy(self.data["set_id"].values)
+        
+        try: # FIXME: help
+            ids = torch.from_numpy(self.data["set_id"].str.replace("W_", "").astype(int).values)
+        except:
+            ids = torch.from_numpy(self.data["set_id"].values)
+        
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -142,10 +147,19 @@ class TestDataset(Dataset):
 
         return target
     
+
+    def __get_parent_dataset_name(self, string):
+        return string.replace("_balanced", "").replace(
+            "_frequent_classes", "").replace(
+                "_grouped", "").replace(
+                    "_genre2", "").replace(
+                        "_instrument2", "").replace(
+                            "_genre", "").replace("_instrument", "").replace("_difficult", "")
+    
     def get_csi_pred_matrix(self, model_name: str):
         
-        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "").replace("_grouped", "")
-                                 
+        dataset_name = self.__get_parent_dataset_name(self.dataset_name)
+
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
@@ -431,7 +445,11 @@ class TrainingDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
-        ids = torch.from_numpy(self.data["set_id"].values)
+        try: # FIXME: help
+            ids = torch.from_numpy(self.data["set_id"].str.replace("W_", "").astype(int).values)
+        except:
+            ids = torch.from_numpy(self.data["set_id"].values)
+
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -561,7 +579,12 @@ class OnlineCoverSongDataset(Dataset):
             _type_: _description_
         """
         labels = torch.from_numpy(self.data["set_id_norm"].values) 
-        ids = torch.from_numpy(self.data["set_id"].values)
+        
+        try: # FIXME: help
+            ids = torch.from_numpy(self.data["set_id"].str.replace("W_", "").astype(int).values)
+        except:
+            ids = torch.from_numpy(self.data["set_id"].values)
+        
         nlabels = torch.from_numpy(self.data["nlabel"].values)
         relevance = nlabels >= 2  
 
@@ -577,9 +600,17 @@ class OnlineCoverSongDataset(Dataset):
 
         return target
 
+    def __get_parent_dataset_name(self, string):
+        return string.replace("_balanced", "").replace(
+            "_frequent_classes", "").replace(
+                "_grouped", "").replace(
+                    "_genre2", "").replace(
+                        "_instrument2", "").replace(
+                            "_genre", "").replace("_instrument", "").replace("_difficult", "")
+
     def get_csi_pred_matrix(self, model_name: str):
         
-        dataset_name = self.dataset_name.replace("_balanced", "").replace("_frequent_classes", "").replace("_grouped", "")
+        dataset_name = self.__get_parent_dataset_name(self.dataset_name)
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()

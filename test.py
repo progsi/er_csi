@@ -300,7 +300,7 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 
     elif model_name == 'ditto':
         attr_num = None
-        model = DittoModel(device=device)
+        model = DittoModel(device=device, lm=tokenizer_name)
         checkpoint = checkpoint_dir + os.sep + "model.pt"
 
         saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
@@ -358,14 +358,17 @@ if __name__ == "__main__":
                         choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", 
                                  "fuzzy"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
-                        choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2"])
+                        choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2", "bert-base-multilingual-cased"])
     parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test_balanced", 
                         choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos", 
                                  "shs100k2_test_balanced", "shs100k2_test_frequent_classes", 
                                  "da-tacos_balanced", "da-tacos_genre", "da-tacos_instrument",
                                  "shs100k2_test_genre", "shs100k2_test_instrument",
+                                 "da-tacos_genre2", "da-tacos_instrument2",
+                                 "shs100k2_test_genre2", "shs100k2_test_instrument2",
                                  "shs100k2_test_grouped", "shs100k2_test_one",
+                                 "shs100k2_test_difficult", "da-tacos_difficult",
                                  "shs100k2_test_nonmusic2", "shs100k2_test_nonmusic", 
                                  "shs100k2_test_one2"],
                         help="Dataset name")

@@ -39,6 +39,31 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
             )
                 dataset["title_right"] = '[MASK]'
                 dataset["performer_right"] = '[MASK]'
+            elif mode == "x":
+
+                dataset = pd.merge(
+                        pd.merge(
+                        data_raw[["set_id", "yt_id", "title", "performer", "video_title", "channel_name", "keywords", "description"]].rename(
+                            {"set_id": "cluster_id", "yt_id": "id"}, axis=1), 
+                        pairs, 
+                        how="right", 
+                        left_on=["cluster_id", "id"], 
+                        right_on=["set_id_a", "ltable_id"]),
+                        data_raw[["set_id", "yt_id", "title", "performer", "video_title", "channel_name", "keywords", "description"]].rename(
+                            {"set_id": "cluster_id", "yt_id": "id"}, axis=1),
+                        how="left",
+                        left_on=["set_id_b", "rtable_id"],
+                        right_on=["cluster_id", "id"],
+                        suffixes=["_left", "_right"]
+            )
+                
+                dataset["title_right"] = '[MASK]'
+                dataset["performer_right"] = '[MASK]'
+
+                dataset["video_title_left"] = '[MASK]'
+                dataset["channel_name_left"] = '[MASK]'
+                dataset["description_left"] = '[MASK]'
+                dataset["keywords_left"] = '[MASK]'
 
             elif mode == "sv":
                 dataset = pd.merge(
@@ -93,7 +118,21 @@ def to_interim(output_dir, data_raw, train_pairs, test_pairs, val_pairs, n_pos_p
                               compression='gzip', orient='records')
         interim_test.drop(["description_left", "description_right", "keywords_left", "keywords_right"], axis=1).to_json(f"{interim_path}/shs100k_rShort-gs.json.gz", lines=True, 
                               compression='gzip', orient='records')
-                              
+        
+        print("Generating rich cross representation...")
+        interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
+            pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), mode="x"
+            )
+        interim_train.to_json(f"{interim_path}/shs100k_xLong-train.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        interim_train.drop(["description_left", "description_right", "keywords_left", "keywords_right"], axis=1).to_json(f"{interim_path}/shs100k_xShort-train.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        interim_test = hell_of_a_join(test_pairs, mode="r")
+        interim_test.to_json(f"{interim_path}/shs100k_xLong-gs.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        interim_test.drop(["description_left", "description_right", "keywords_left", "keywords_right"], axis=1).to_json(f"{interim_path}/shs100k_xShort-gs.json.gz", lines=True, 
+                              compression='gzip', orient='records')
+        
         print("Generating interim train video-video...")
         interim_train = hell_of_a_join( # somehow, the original repo requires train AND val here.
             pd.concat([train_pairs, val_pairs], axis=0, ignore_index=True), mode="vv"
