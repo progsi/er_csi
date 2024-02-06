@@ -206,7 +206,7 @@ class TestDataset(Dataset):
             'ver_id': torch.tensor(ver_ids)        
             }
         
-    def serialize_item(self, item, cols, mask_shs=False):    
+    def serialize_item(self, item, cols, mask_shs=False, mask_yt=False):    
         
         COL_TOKEN = "[COL]"
         VAL_TOKEN = "[VAL]"
@@ -216,6 +216,12 @@ class TestDataset(Dataset):
         if mask_shs:
             for i, (col_tok, col, val_tok, val) in enumerate(tuple_list):
                 if col in ["performer", "title"]:
+                    val = "[MASK]"
+                tuple_list[i] = (col_tok, col, val_tok, val)
+        # mask shs info
+        if mask_yt:
+            for i, (col_tok, col, val_tok, val) in enumerate(tuple_list):
+                if col in ["video_title", "channel_name", "description", "keywords"]:
                     val = "[MASK]"
                 tuple_list[i] = (col_tok, col, val_tok, val)
 
@@ -259,11 +265,10 @@ class TestDataset(Dataset):
 
         left_cols, right_cols = self.__get_cols_by_task(task)
         
-        serialized_text_left = self.serialize_item(item_left, left_cols)
-        if  "rLong" in task or "rShort" in task:
-            serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=True)
-        else:    
-            serialized_text_right = self.serialize_item(item_right, right_cols)
+        mask_yt = "xLong" in task or "xShort" in task
+        serialized_text_left = self.serialize_item(item_left, left_cols, mask_yt=mask_yt)
+        mask_shs =  "xLong" in task or "xShort" in task or  "rLong" in task or "rShort" in task
+        serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=mask_shs)
 
         tokenized = self.tokenizer.encode(text=serialized_text_left,
                                   text_pair=serialized_text_right,
@@ -281,10 +286,11 @@ class TestDataset(Dataset):
         
         serialized_text_left = self.serialize_item(item_left, left_cols).replace("[", "").replace("]", "")
 
-        if "rLong" in task or "rShort" in task:
-            serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=True)
-        else:
-            serialized_text_right = self.serialize_item(item_right, right_cols)
+        mask_yt = "xLong" in task or "xShort" in task
+        serialized_text_left = self.serialize_item(item_left, left_cols, mask_yt=mask_yt)
+        mask_shs =  "xLong" in task or "xShort" in task or  "rLong" in task or "rShort" in task
+        serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=mask_shs)
+        
         serialized_text_right = serialized_text_right.replace("[", "").replace("]", "")
 
         sent = serialized_text_left + ' [SEP] ' + serialized_text_right
@@ -337,10 +343,10 @@ class TestDataset(Dataset):
         elif task == "vvLong":
             left_cols = ["video_title", "channel_name", "description"]
             right_cols = left_cols
-        elif task == "rShort":
+        elif task == "rShort" or task == "xShort":
             left_cols = ["title", "performer", "video_title", "channel_name"]
             right_cols = left_cols
-        elif task == "rLong":
+        elif task == "rLong" or task == "xLong":
             left_cols = ["title", "performer", "video_title", "channel_name", "keywords", "description"]
             right_cols = left_cols
         elif task == "tvShort":

@@ -31,8 +31,9 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
             metrics_dict, metrics_dict2 = __test_model_itemwise(model, dataset, ir_eval, device, with_audio, weight2=audio_weight)
             preds = None
         else:
+            audio_weight = 0.8 # found with grid search on validation set but with SBERT and Fuzzy
             preds = __pred_model_pairwise(model, blocker, dataset, task, device)
-            metrics_dict, metrics_dict2 = __test_model(preds, dataset, task, ir_eval, device)
+            metrics_dict, metrics_dict2 = __test_model(preds, dataset, task, ir_eval, device, weight2=audio_weight)
         model.train()
     else:
         left_df, right_df = dataset.get_dfs_by_task(task)
@@ -361,20 +362,11 @@ if __name__ == "__main__":
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2", "bert-base-multilingual-cased"])
     parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_test_balanced", 
-                        choices=["shs100k2_test", "shs100k2_val", "shs-yt", "da-tacos", 
-                                 "shs100k2_test_balanced", "shs100k2_test_frequent_classes", 
-                                 "da-tacos_balanced", "da-tacos_genre", "da-tacos_instrument",
-                                 "shs100k2_test_genre", "shs100k2_test_instrument",
-                                 "da-tacos_genre2", "da-tacos_instrument2",
-                                 "shs100k2_test_genre2", "shs100k2_test_instrument2",
-                                 "shs100k2_test_grouped", "shs100k2_test_one",
-                                 "shs100k2_test_difficult", "da-tacos_difficult",
-                                 "shs100k2_test_nonmusic2", "shs100k2_test_nonmusic", 
-                                 "shs100k2_test_one2"],
                         help="Dataset name")
     parser.add_argument("--task", type=str, default="rLong", 
                         choices=["svShort", "vvShort", "svShort+Tags", "vvShort+Tags", "svLong", 
-                                 "vvLong", "tvShort", "tvLong", "tvShort+Tags", "rLong", "rShort"])
+                                 "vvLong", "tvShort", "tvLong", "tvShort+Tags", "rLong", "rShort", "xLong",
+                                 "xShort"])
     parser.add_argument("--nsample",  type=int, default=None)
     parser.add_argument('-o', '--only_original', action='store_true')
     args = parser.parse_args()
