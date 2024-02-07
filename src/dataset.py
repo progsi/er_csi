@@ -164,7 +164,7 @@ class TestDataset(Dataset):
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
-        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt"))
+        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt")).cpu()
 
         preds = pd.merge(
             self.data[["yt_id"]], 
@@ -621,7 +621,7 @@ class OnlineCoverSongDataset(Dataset):
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
         
-        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt"))
+        preds_tensor = torch.load(os.path.join("preds", model_name, dataset_name, "ypred.pt")).cpu()
 
         preds = pd.merge(
             self.data[["yt_id"]], 
