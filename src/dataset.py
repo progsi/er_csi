@@ -30,6 +30,7 @@ class TestDataset(Dataset):
         super().__init__()
         
         self.dataset_name = dataset_name
+        self.parent_dataset_name = self.__get_parent_dataset_name(self.dataset_name)
         self.only_original = only_original
         
         self.tokenizer = tokenizer
@@ -147,19 +148,17 @@ class TestDataset(Dataset):
 
         return target
     
-
-    def __get_parent_dataset_name(self, string):
-        return string.replace("_balanced", "").replace(
-            "_frequent_classes", "").replace(
-                "_grouped", "").replace(
-                    "_genre2", "").replace(
-                        "_instrument2", "").replace(
-                            "_genre", "").replace("_instrument", "").replace("_difficult", "")
-    
+    def __get_parent_dataset_name(self, dataset_name):
+        parent_datasets = ["shs100k2_test", "shs100k2_val", "da-tacos"]
+        for d in parent_datasets:
+            if d in dataset_name:
+                return d
+        return dataset_name
+            
     def get_csi_pred_matrix(self, model_name: str):
         
-        dataset_name = self.__get_parent_dataset_name(self.dataset_name)
-
+        dataset_name = self.parent_dataset_name
+        
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
@@ -301,6 +300,7 @@ class TestDataset(Dataset):
             attr_items = [item + ' COL' for item in items[0:-1]]
             attrs = []
             for attr_item in attr_items:
+                attr_item = attr_item.replace("[COL]", "COL").replace("[VAL]", "VAL")
                 attrs.append([f"COL {attr_str}" for attr_str in re.findall(r"(?<=COL ).*?(?= COL)", attr_item.replace("\n", "").replace("\r", ""))])
             assert len(attrs[0]) == len(attrs[1])
         else:
@@ -606,17 +606,17 @@ class OnlineCoverSongDataset(Dataset):
 
         return target
 
-    def __get_parent_dataset_name(self, string):
-        return string.replace("_balanced", "").replace(
-            "_frequent_classes", "").replace(
-                "_grouped", "").replace(
-                    "_genre2", "").replace(
-                        "_instrument2", "").replace(
-                            "_genre", "").replace("_instrument", "").replace("_difficult", "")
-
+    def __get_parent_dataset_name(self, dataset_name):
+        parent_datasets = ["shs100k2_test", "shs100k2_val", "da-tacos"]
+        for d in parent_datasets:
+            if d in dataset_name:
+                return d
+        return dataset_name
+            
     def get_csi_pred_matrix(self, model_name: str):
         
         dataset_name = self.__get_parent_dataset_name(self.dataset_name)
+        
         preds_yt_ids = pd.read_csv(
             os.path.join("preds", model_name, dataset_name, "data.csv"), 
             sep=";").yt_id.to_list()
