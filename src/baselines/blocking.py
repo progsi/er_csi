@@ -7,9 +7,10 @@ import torch
 
 class Blocker(object):
     def __init__(self, blocking_func: str, threshold: float, workers: int = 64, device: str = "cuda", 
-                 strategy: str = "above") -> None:
+                 strategy: str = "above", k: int = None) -> None:
         self.blocking_func = blocking_func
         self.threshold = threshold
+        self.k = k
         self.strategy = strategy
         self.workers = workers
         self.device = device
@@ -22,8 +23,8 @@ class Blocker(object):
         y = process.cdist(left_data, right_data, scorer=self.blocking_func, 
                                                 workers=self.workers)
         return torch.tensor(y).to(self.device)
-            
-    def block(self, left_df, right_df):
+    
+    def block_fuzzy(self, left_df, right_df):
         
         y = self.predict(left_df, right_df)
         
@@ -40,3 +41,18 @@ class Blocker(object):
 
         return mask, y
         
+    def block_topk(self, preds):
+
+        if self.strategy not in ["top", "lowest"]:
+            raise ValueError("Invalid strategy. Please choose 'top' or 'lowest'.")
+
+        # Get the indices of the top or lowest k values per row
+        largest = self.strategy == "top"
+        _, indices = torch.topk(preds, self.k, dim=1, largest=largest, sorted=True)
+
+        row_indices = torch.arange(indices.size(0)).unsqueeze(1).expand_as(indices).to(indices.device)
+
+        # Create the 2D matrix with row indices in the first column
+        result_matrix = torch.stack([row_indices.flatten(), indices.flatten()], dim=1)
+
+        return result_matrix.view(-1, 2)

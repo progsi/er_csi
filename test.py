@@ -48,7 +48,6 @@ def test(model: torch.nn.Module, dataset: torch.utils.data.Dataset,
     if print_all:
         print(json.dumps(metrics_dict, indent=4))
         
-
     return metrics_dict, metrics_dict2, preds
 
 
@@ -64,11 +63,15 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
     
     # get indices to predict on
     if blocker is not None:
-        left_df, right_df = dataset.get_dfs_by_task("tvShort")
-        blocking_mask, preds = blocker.block(left_df, right_df) if blocker is not None else None    
-        pred_indices = torch.nonzero(blocking_mask.triu(1))
+        if blocker.blocking_func == "sentence-transformers":
+            preds = dataset.get_csi_pred_matrix("sentence-transformers").to(device)
+            pred_indices = blocker.block_topk(preds)
+        else:
+            left_df, right_df = dataset.get_dfs_by_task("tvShort")
+            blocking_mask, preds = blocker.block_fuzzy(left_df, right_df) if blocker is not None else None    
+            pred_indices = torch.nonzero(blocking_mask.triu(1))
 
-        preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
+            preds = torch.where(blocking_mask > 0, torch.ones_like(blocking_mask).to(dtype=torch.float32), torch.zeros_like(blocking_mask).to(dtype=torch.float32))
     else:
         preds = torch.zeros_like(target_matrix).to(dtype=torch.float32)
         rows, cols = preds.size()
@@ -271,7 +274,15 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         )
 
         if nsample is None and blocking_func is not None:
-            blocker = Blocker(blocking_func=eval(blocking_func), threshold=0.8, strategy="above") # for > 0.95 recall (empirical)
+            if blocking_func == "sentence-transformers":
+                _blocking_func = blocking_func
+                _blocking_strategy = "top"
+                blocker = Blocker(blocking_func=_blocking_func, threshold=None, k=100, strategy=_blocking_strategy) # for > 0.95 recall (empirical)
+
+            else:
+                _blocking_func = eval(blocking_func)
+                _blocking_strategy = "above"
+                blocker = Blocker(blocking_func=_blocking_func, threshold=0.8, strategy=_blocking_strategy) # for > 0.95 recall (empirical)
         else:
             blocker = None
     else:
