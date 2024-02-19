@@ -12,9 +12,12 @@ General requirements: a file in `../data/shs100k2_yt.parquet` containing the ori
 3. Preprocess: `python preprocess_rsupcon.py`
 4. Preprocess for Ditto and HierGAT `python preprocess_ditto_hiergat.py`
 
+# S-BERT
+To train S-BERT like described in the paper, run: `train_metric_bert.py --model_name sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --task tvShort`
+
 # Ditto or HierGAT
 1. Modify the config.json in the Ditto/HierGAT repo to contain the respective task
-2. Run training as explained in the Ditto/HierGAT repository
+2. Run training as explained in the Ditto/HierGAT repository.
 
 # rSupCon
 1. Pretrain: `bash run_pretraining_clean_roberta.sh 256 5e-05 0.07 all-` with setting the appropriate params (refer to the original repo)
