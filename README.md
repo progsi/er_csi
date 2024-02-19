@@ -1,7 +1,7 @@
 # CSI/ER on Online Video Platforms
 
 General requirements: a file in `../data/shs100k2_yt.parquet` containing the original SHS100K metadata and YouTube metadata (video_title, description, channel_name). The CSI datasets which are in this repo must be in `../data/csi_datasets/`. The repos of the ER models must be cloned:
-  - https://github.com/progsi/contrastive-product-matching
+  - https://github.com/wbsg-uni-mannheim/contrastive-product-matching
   - https://github.com/CGCL-codes/HierGAT
   - https://github.com/megagonlabs/ditto 
 
