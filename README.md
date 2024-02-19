@@ -40,6 +40,8 @@ To train S-BERT like described in the paper, run: `train_metric_bert.py --model_
 Dropped. We realized that `py_entitymatching` is not suitable for our usecase, because:
 - no asymmetric matching is supported (eg. two data sources do not share the same attribute types and numbers of attributes)
 - evaluating on the CSI test sets (eg. SHS100K and DaTacos) with mean average precision on N^2 pairs is incredibly slow using the provided catalogues. 
+## Ranking Model
+This is shown in the `lambdamart.ipynb`.
 
 # Testing
 This is done with `test.py`. Dataset and model need to be specified, as well as tokenizer name depending on the model used.
