@@ -1,9 +1,17 @@
 # CSI/ER on Online Video Platforms
 
+Due to copyright reasons, we cannot share the YouTube metadata publicly. Hence, one must download the corresponding YouTube metadata using the corresponding `yt_id`. The resulting file should be put `data/yt_metadata.parquet`, with the following columns (one row is one YouTube video):
+- `id`: the YouTube identifier
+- `title`: the YouTube video title
+- `channel_name`: the channel name 
+- `description`: the video description
+- `keywords`: the list of keywords
+ 
+
 General requirements: a file in `../data/shs100k2_yt.parquet` containing the original SHS100K metadata and YouTube metadata (video_title, description, channel_name). The CSI datasets which are in this repo must be in `../data/csi_datasets/`. The repos of the ER models must be cloned:
-  - https://github.com/wbsg-uni-mannheim/contrastive-product-matching
-  - https://github.com/CGCL-codes/HierGAT
-  - https://github.com/megagonlabs/ditto 
+  - Contrastive-Product-Matching (our fork): https://anonymous.4open.science/r/contrastive-product-matching-E49B
+  - Ditto (our fork): https://anonymous.4open.science/r/ditto-2D11
+  - HierGAT (our fork): https://anonymous.4open.science/r/HierGAT-148B
 
 # Preprocessing
 
