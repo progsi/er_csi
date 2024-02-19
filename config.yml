@@ -1,7 +1,7 @@
 # paths
 repo_root: "."
-data_path: /data/csi_datasets/
-yt_metadata_file: /data/yt_metadata.parquet
+data_path: data/csi_datasets/
+yt_metadata_file: data/yt_metadata.parquet
 device: cuda
 
 #
