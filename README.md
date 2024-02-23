@@ -28,8 +28,7 @@ Due to copyright reasons, we cannot share the YouTube metadata publicly. Hence, 
 ## S-BERT
 To train S-BERT like described in the paper, run: `train_metric_bert.py --model_name sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 --task tvShort`
 ## Ditto or HierGAT
-1. Use our respective fork and train using the params as described, set `--task shs100k_rLong_1000` for Ditto and `--task shs100k_rShort_1000` for HierGAT
-2. Run training as explained in the Ditto/HierGAT repository.
+Use our respective fork and train using the params as described, set `--task shs100k_rLong_1000` for Ditto and `--task shs100k_rShort_1000` for HierGAT
 ## rSupCon
 1. Pretrain: `bash run_pretraining_clean_roberta.sh 256 5e-05 0.07 all-` with setting the appropriate params (refer to the original repo)
 2.  Pretrain: `bash run_finetune_siamese_frozen_roberta.sh 64 5e-05 0.07 all-` with setting the appropriate params (refer to the original repo)
