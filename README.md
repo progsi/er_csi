@@ -8,18 +8,18 @@ In the `data` dir, we provide the following datasets (our code retains only rows
 - `shs100k2_test_one.csv` the V-SHS100K-T-Noise dataset
 - `da-tacos.csv` the V-DaTacos dataset
 # Getting Started
-## YouTube metadata file
-Due to copyright reasons, we cannot share the YouTube metadata publicly. Hence, one must download the corresponding YouTube metadata using the corresponding `yt_id`. The resulting file should be put `data/yt_metadata.parquet`, with the following columns (one row is one YouTube video):
+## 1. YouTube metadata file
+Due to copyright reasons, we cannot share the YouTube metadata publicly. Hence, one must download the corresponding YouTube metadata using the script `get_yt_metadata_parquet.py`. The resulting file is put `data/yt_metadata.parquet`, with the following columns (one row is one YouTube video):
 - DataFrame index: `yt_id`: the YouTube identifier
 - `title`: the YouTube video title
 - `channel_name`: the channel name 
 - `description`: the video description
 - `keywords`: the list of keywords
-## Repositories 
+## 2. Clone Repositories 
 - Contrastive-Product-Matching (our fork): https://anonymous.4open.science/r/contrastive-product-matching-E49B
 - Ditto (our fork): https://anonymous.4open.science/r/ditto-2D11
 - HierGAT (our fork): https://anonymous.4open.science/r/HierGAT-148B
-## Preprocessing
+## 3. Preprocessing
 1. Install and activate the env from the yaml file: `contrastive-product-matching.yml`
 2. Go to `src/baselines/rsupcon` where you find scripts to preprocess and train the baseline.
 3. Preprocess: `python preprocess_rsupcon.py`
