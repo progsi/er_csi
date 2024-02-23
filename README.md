@@ -10,7 +10,7 @@ In the `data` dir, we provide the following datasets (our code retains only rows
 # Getting Started
 ## YouTube metadata file
 Due to copyright reasons, we cannot share the YouTube metadata publicly. Hence, one must download the corresponding YouTube metadata using the corresponding `yt_id`. The resulting file should be put `data/yt_metadata.parquet`, with the following columns (one row is one YouTube video):
-- `id`: the YouTube identifier
+- DataFrame index: `yt_id`: the YouTube identifier
 - `title`: the YouTube video title
 - `channel_name`: the channel name 
 - `description`: the video description
