@@ -277,7 +277,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
             if blocking_func == "sentence-transformers":
                 _blocking_func = blocking_func
                 _blocking_strategy = "top"
-                blocker = Blocker(blocking_func=_blocking_func, threshold=None, k=100, strategy=_blocking_strategy) # for > 0.95 recall (empirical)
+                k = 100 if len(dataset.data) > 100 else 10
+                blocker = Blocker(blocking_func=_blocking_func, threshold=None, k=k, strategy=_blocking_strategy) # for > 0.95 recall (empirical)
 
             else:
                 _blocking_func = eval(blocking_func)

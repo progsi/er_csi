@@ -96,8 +96,8 @@ class TestDataset(Dataset):
                 ]) if len(item_yt.keywords) > 0 else ''
         else:
             item["video_title"] = item["title_generated"]
-            item["channel_name"] = self.metadata.sample(n=1).channel_name.item() # sample random channel name
-            item["description"] = ''
+            item["channel_name"] = item["channel_generated"] # sample random channel name
+            item["description"] = item["description_generated"]
             item["keywords"] = ''
 
         return item
