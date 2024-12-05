@@ -5,9 +5,7 @@ import time
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
-from src.baselines.rsupcon.model import ContrastiveClassifierModel
 from src.baselines.ditto.model import DittoModel
-from src.baselines.hiergat.model import TranHGAT
 from src.baselines.blocking import Blocker
 from src.baselines.sentence_transformers.model import SBert
 from src.dataset import TestDataset, OnlineCoverSongDataset
@@ -99,13 +97,6 @@ def __pred_model_pairwise(model: torch.nn.Module, blocker: Blocker,
             logits = model(input_ids)
             pred = logits.softmax(dim=1)[:, 1]
 
-        elif model_name == 'TranHGAT':
-            
-            _, x, y, masks, _ = dataset.getitem_hiergat(
-                i, j, task, split = model.attr_num > 1 ) # FIXME: split param is fixed!
-            logits, y1, y_hat = model(x, y, masks)
-            logits = logits.view(-1, logits.shape[-1])
-            pred = y_hat.view(-1)
         
         preds[i,j] = pred.item()
         preds[j,i] = pred.item()
@@ -239,36 +230,19 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
     
     checkpoint_dir = os.path.join("checkpoints", model_name, tokenizer_name, task)
-    if model_name == "rsupcon":
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_name, additional_special_tokens=('[COL]', '[VAL]'))
-    elif model_name == "sentence-transformers":
+    if model_name == "sentence-transformers":
         tokenizer = AutoTokenizer.from_pretrained('/'.join((model_name, tokenizer_name)))
     else:
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
         
     
     if model_name != "sentence-transformers":
-        
-        if model_name == "hiergat_split":
-            if task == "rLong":
-                attr_num = 6
-            elif task == "rShort":
-                attr_num = 4
-            elif task == "svLong" or task == "vvLong" or "+Tags" in task:
-                attr_num = 3
-            else:
-                attr_num = 2
-        elif model_name == "hiergat_nosplit":
-            attr_num = 1
-        else:
-            attr_num = None
 
         dataset = TestDataset(
         dataset_name,
         config_data["data_path"],
         config_data["yt_metadata_file"],
         tokenizer=tokenizer,
-        attr_num=attr_num,
         nsample=nsample,
         only_original=only_original
         )
@@ -301,18 +275,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 
     if model_name == 'fuzzy':
         model = None
-        attr_num = None
-    elif model_name == 'rsupcon':
-        model = ContrastiveClassifierModel(
-            model=tokenizer_name,
-            len_tokenizer=len(tokenizer), 
-            checkpoint_path=checkpoint_dir + os.sep + "pytorch_model.bin",
-            frozen=True,
-            pos_neg=False)
-        model.to(device)
 
     elif model_name == 'ditto':
-        attr_num = None
         model = DittoModel(device=device, lm=tokenizer_name)
         checkpoint = checkpoint_dir + os.sep + "model.pt"
 
@@ -320,18 +284,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         model.load_state_dict(saved_state['model'])
         model.to(device)
 
-    elif 'hiergat' in model_name:
-        checkpoint = os.path.join("checkpoints", "hiergat", tokenizer_name, task) + os.sep + "model.pt"
-        saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
-        if model_name == "hiergat_split":
-            model = TranHGAT(attr_num=attr_num, lm=tokenizer_name, device=device)
-            model.load_state_dict(saved_state)
-        else:
-            model = TranHGAT(attr_num=1, lm=tokenizer_name, device=device)
-            model.load_state_dict(saved_state)
-        model.to(device)
     elif model_name == "sentence-transformers":
-        blocker, attr_num = None, None
+        blocker = None
         model = SBert('/'.join((model_name, tokenizer_name)), pooling='mean') 
         checkpoint = checkpoint_dir + os.sep + "model.pt"
         saved_state = torch.load(checkpoint)
@@ -367,9 +321,8 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
         
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
-    parser.add_argument("--model_name", type=str, default="ditto", # default="hiergat_nosplit", 
-                        choices=["ditto", "hiergat_nosplit", "hiergat_split", "sentence-transformers", "rsupcon", "magellan", 
-                                 "fuzzy"], help="Model name")
+    parser.add_argument("--model_name", type=str, default="ditto",
+                        choices=["ditto", "sentence-transformers", "fuzzy"], help="Model name")
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2", "bert-base-multilingual-cased"])
     parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")

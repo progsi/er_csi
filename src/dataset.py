@@ -21,7 +21,6 @@ class TestDataset(Dataset):
             metadata_file_path: str, # path to youtube metadata in parquet file
             tokenizer: AutoTokenizer,
             device: str = "cuda",
-            attr_num: str = None,
             max_len: int = 256,
             nsample: int = None,
             only_original: bool = False
@@ -73,7 +72,6 @@ class TestDataset(Dataset):
         # transforms
         self.text_transform = UnicodeNormalize()
         self.device = device
-        self.attr_num = attr_num
         self.max_len = max_len
         
     def __len__(self):
@@ -275,53 +273,6 @@ class TestDataset(Dataset):
                                   truncation=True,
                                   return_tensors="pt")
         return tokenized, labels  
-    
-    def getitem_hiergat(self, idx_left, idx_right, task, split):
-        
-        item_left = self[idx_left]
-        item_right = self[idx_right]
-
-        left_cols, right_cols = self.__get_cols_by_task(task)
-        
-        serialized_text_left = self.serialize_item(item_left, left_cols).replace("[", "").replace("]", "")
-
-        mask_yt = "xLong" in task or "xShort" in task
-        serialized_text_left = self.serialize_item(item_left, left_cols, mask_yt=mask_yt)
-        mask_shs =  "xLong" in task or "xShort" in task or  "rLong" in task or "rShort" in task
-        serialized_text_right = self.serialize_item(item_right, right_cols, mask_shs=mask_shs)
-        
-        serialized_text_right = serialized_text_right.replace("[", "").replace("]", "")
-
-        sent = serialized_text_left + ' [SEP] ' + serialized_text_right
-        label = torch.tensor(1 if item_left["set_id"] == item_right["set_id"] else 0).unsqueeze(0)
-        
-        items = [serialized_text_left, serialized_text_right, label]
-        if split:
-            attr_items = [item + ' COL' for item in items[0:-1]]
-            attrs = []
-            for attr_item in attr_items:
-                attr_item = attr_item.replace("[COL]", "COL").replace("[VAL]", "VAL")
-                attrs.append([f"COL {attr_str}" for attr_str in re.findall(r"(?<=COL ).*?(?= COL)", attr_item.replace("\n", "").replace("\r", ""))])
-            assert len(attrs[0]) == len(attrs[1])
-        else:
-            attrs = [[item] for item in items[0:-1]]
-
-        xs = [self.tokenizer.encode(text=attrs[0][i], text_pair=attrs[1][i],
-                                    add_special_tokens=True, truncation="longest_first", 
-                                    max_length=self.max_len)
-              for i in range(self.attr_num)]
-        
-        max_length = max(len(lst) for lst in xs)
-        padded_lists = [lst + [0] * (max_length - len(lst)) for lst in xs]
-        x =  torch.tensor(padded_lists)
-        
-        masks = [torch.zeros(self.tokenizer.vocab_size, dtype=torch.int)
-                 for _ in range(self.attr_num)]
-        for i in range(self.attr_num):
-            masks[i][xs[i]] = 1
-        masks = torch.stack(masks)
-
-        return sent, x.unsqueeze(0), label, masks.unsqueeze(0), attrs
       
     def __get_cols_by_task(self, task: str):
         
