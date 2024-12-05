@@ -1,23 +1,15 @@
 import argparse
-from datetime import datetime
 import os
-import time
 from tqdm import tqdm
-from transformers import AutoTokenizer, AutoModel
-from sentence_transformers import SentenceTransformer
 import torch
-import torch.nn as nn
-from torch.nn import MultiLabelSoftMarginLoss
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import ExponentialLR, ReduceLROnPlateau
 from src.baselines.sentence_transformers.model import SBert
 from src.dataset import OnlineCoverSongDataset
 from src.utils import Config
 from src.evaluation import RetrievalEvaluation
 from test import test
-import json
-from pytorch_metric_learning import miners, losses, distances, samplers, regularizers
+from pytorch_metric_learning import miners, losses, samplers
 import wandb
 
 

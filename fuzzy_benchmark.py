@@ -1,9 +1,8 @@
 import argparse
 import torch
 import time
-from src.evaluation import RetrievalEvaluation
 from src.dataset import TestDataset
-from rapidfuzz import process, fuzz, distance
+from rapidfuzz import process
 import yaml
 import json
 from nltk.stem.snowball import SnowballStemmer
@@ -245,7 +244,7 @@ def benchmark_fuzzy_functions(dataset: torch.utils.data.Dataset, target_matrix: 
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Benchmark fuzzy functions.")
+    parser = argparse.ArgumentParser(description="Benchmark fuzzy functions, attribute selection and threshold.")
     parser.add_argument("--benchmark", type=str, default="thresholds", 
                         choices=["funcs", "attrs", "thresholds"], help="Benchmark type")
     parser.add_argument("--dataset_name", type=str, default="shs100k2_val", 

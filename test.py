@@ -220,7 +220,8 @@ def __test_model_itemwise(model: torch.nn.Module, dataset: torch.utils.data.Data
         return results_sym, results_asym
 
 
-def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str, nsample: int = None, only_original: bool = False):
+def main(model_name: str, checkpoint: str, tokenizer_name: str, blocking_func: str, dataset_name: str, task: str,
+         nsample: int = None, only_original: bool = False):
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
@@ -229,7 +230,6 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     
     ir_eval = RetrievalEvaluation(top_k=10, device=device)
     
-    checkpoint_dir = os.path.join("checkpoints", model_name, tokenizer_name, task)
     if model_name == "sentence-transformers":
         tokenizer = AutoTokenizer.from_pretrained('/'.join((model_name, tokenizer_name)))
     else:
@@ -278,7 +278,6 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
 
     elif model_name == 'ditto':
         model = DittoModel(device=device, lm=tokenizer_name)
-        checkpoint = checkpoint_dir + os.sep + "model.pt"
 
         saved_state = torch.load(checkpoint, map_location=lambda storage, loc: storage)
         model.load_state_dict(saved_state['model'])
@@ -287,7 +286,6 @@ def main(model_name: str, tokenizer_name: str, blocking_func: str, dataset_name:
     elif model_name == "sentence-transformers":
         blocker = None
         model = SBert('/'.join((model_name, tokenizer_name)), pooling='mean') 
-        checkpoint = checkpoint_dir + os.sep + "model.pt"
         saved_state = torch.load(checkpoint)
         model.load_state_dict(saved_state["model"])
         model.to(device)
@@ -323,6 +321,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test the ER models.")
     parser.add_argument("--model_name", type=str, default="ditto",
                         choices=["ditto", "sentence-transformers", "fuzzy"], help="Model name")
+    parser.add_argument('--checkpoint', type=str, required=True, help='Path to trained model')
     parser.add_argument("--tokenizer_name", type=str, default="roberta-base",
                         choices=["roberta-base", "paraphrase-multilingual-MiniLM-L12-v2", "bert-base-multilingual-cased"])
     parser.add_argument("--blocking_func", type=str, default=None) # default="fuzz.token_set_ratio")
@@ -338,7 +337,7 @@ if __name__ == "__main__":
 
     assert not (args.blocking_func is None and args.model_name == "fuzzy"), "Cannot use blocker as model without defined blocking function"
     
-    main(args.model_name, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample, args.only_original)    
+    main(args.model_name, args.checkpoint, args.tokenizer_name, args.blocking_func, args.dataset_name, args.task, args.nsample, args.only_original)    
     
         
         
