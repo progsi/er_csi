@@ -1,4 +1,4 @@
-# Cover Song Identification with Entity Resolution on Online Video Platforms
+# Cover Song Identification + Entity Resolution
 This is a repo to model cover song identification (CSI) as a multi-modal problem combining existing audio-based approaches with entity resolution (ER).
 # Datasets
 In the `data` dir, we provide the following datasets (our code retains only rows with corresponding MP3s and features indicated by the last columns):
